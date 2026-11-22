@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from . import PLUGIN_VERSION
 
-logger = logging.getLogger("hermex_push")
+logger = logging.getLogger("hermix_push")
 
 QUEUE_LIMIT = 256
 TIMEOUT_SECONDS = 10.0

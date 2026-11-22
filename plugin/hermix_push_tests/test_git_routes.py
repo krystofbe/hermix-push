@@ -17,7 +17,7 @@ PREFIX = "/api/plugins/hermix-push"
 
 @pytest.fixture
 def client():
-    spec = importlib.util.spec_from_file_location("hermex_push_git_under_test", ROOT / "dashboard" / "plugin_api.py")
+    spec = importlib.util.spec_from_file_location("hermix_push_git_under_test", ROOT / "dashboard" / "plugin_api.py")
     api = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = api
     spec.loader.exec_module(api)

@@ -1,6 +1,6 @@
 import pytest
 
-from hermex_push.sources import coarse_source, should_notify
+from hermix_push.sources import coarse_source, should_notify
 
 
 @pytest.mark.parametrize("platform,expected", [

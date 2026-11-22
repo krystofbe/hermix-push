@@ -14,7 +14,7 @@ import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hermex_push import INSTALL_IDENTIFIER, PLUGIN_NAME, PLUGIN_VERSION
+from hermix_push import INSTALL_IDENTIFIER, PLUGIN_NAME, PLUGIN_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -65,7 +65,7 @@ def test_declared_versions_match_the_loaded_version():
 
 def test_register_declares_platform_and_every_manifest_hook(monkeypatch):
     monkeypatch.delenv("HERMIX_HOME_CHANNEL", raising=False)
-    plugin = _load(ROOT / "__init__.py", "hermex_push_plugin_under_test")
+    plugin = _load(ROOT / "__init__.py", "hermix_push_plugin_under_test")
     ctx = FakeCtx()
     plugin.register(ctx)
     assert ctx.platform["name"] == "hermix" and ctx.platform["required_env"] == ["HERMIX_PUSH_RELAY_URL"]
@@ -79,7 +79,7 @@ def test_register_declares_platform_and_every_manifest_hook(monkeypatch):
 
 
 def test_pairing_route_returns_keys_only_with_a_relay_url(hermes_home, monkeypatch):
-    api = _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_pairing_under_test")
+    api = _load(ROOT / "dashboard" / "plugin_api.py", "hermix_push_pairing_under_test")
     app = FastAPI()
     app.include_router(api.router, prefix="/api/plugins/hermix-push")
     client = TestClient(app)
@@ -99,7 +99,7 @@ def test_pairing_route_returns_keys_only_with_a_relay_url(hermes_home, monkeypat
 
 
 def test_capabilities_lists_the_mounted_routes_without_touching_the_keys(hermes_home):
-    api = _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_capabilities_under_test")
+    api = _load(ROOT / "dashboard" / "plugin_api.py", "hermix_push_capabilities_under_test")
     app = FastAPI()
     app.include_router(api.router, prefix="/api/plugins/hermix-push")
 
@@ -134,7 +134,7 @@ def _restart_api(monkeypatch, calls):
     base = types.ModuleType("tools.environments.base")
     base._exit_fenced = False
     monkeypatch.setitem(sys.modules, "tools.environments.base", base)
-    return _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_restart_under_test"), timers
+    return _load(ROOT / "dashboard" / "plugin_api.py", "hermix_push_restart_under_test"), timers
 
 
 def test_restart_answers_202_then_reexecs_the_dashboard_with_its_own_command_line(monkeypatch, tmp_path):

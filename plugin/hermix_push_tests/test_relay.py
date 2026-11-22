@@ -1,4 +1,4 @@
-from hermex_push.relay import RelaySender, allowed_relay_url, notify_url
+from hermix_push.relay import RelaySender, allowed_relay_url, notify_url
 
 
 def test_notify_url_shape():
@@ -62,7 +62,7 @@ def test_relay_url_must_be_https_unless_loopback():
 
 def test_redirects_are_refused():
     import http.server, threading
-    from hermex_push.relay import _urllib_post
+    from hermix_push.relay import _urllib_post
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_POST(self):

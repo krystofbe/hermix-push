@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 from . import HOME_CHAT_ID, PLATFORM_NAME, RELAY_URL_ENV
 from .hooks import relay_url_from_env, shared_push
 
-logger = logging.getLogger("hermex_push")
+logger = logging.getLogger("hermix_push")
 
 _SESSION_REF = re.compile(r"[A-Za-z0-9_.-]{1,200}")
 
@@ -50,9 +50,11 @@ def is_connected(config: Any = None) -> bool:
 
 
 def env_enablement() -> Optional[dict]:
-    """Auto-enable the platform when the relay URL is set, so ``gateway status`` shows it."""
+    """Auto-enable the platform when the relay URL is set, so ``gateway status`` shows it. The
+    ``home_channel`` key becomes the gateway's home channel (gateway/config_env.py), which
+    ``send_message`` without a chat id reads."""
     url = relay_url_from_env()
-    return {"relay_url": url} if url else None
+    return {"relay_url": url, "home_channel": {"chat_id": HOME_CHAT_ID, "name": "iPhone"}} if url else None
 
 
 def make_adapter(config: Any):

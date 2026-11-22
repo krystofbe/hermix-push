@@ -73,7 +73,7 @@ user configuration is needed.
 profile has its own plugin directory, `plugins.enabled` list and `.env`. hermes-agent discovers
 a profile's plugins once, on first use, so a per-profile install only takes effect after the
 backend restarts. Instead, one install serves every profile in the same process
-(`hermex_push/scopes.py`, [hermex#634](https://github.com/uzairansaruzi/hermex/issues/634)):
+(`hermix_push/scopes.py`, [hermex#634](https://github.com/uzairansaruzi/hermex/issues/634)):
 the first copy loaded wraps `PluginManager.invoke_hook` and `has_hook` and pushes for any
 profile without its own copy, under that profile's name. That covers the dashboard backend the
 Bot connection uses and hermes-webui, including profiles created later; a profile run in its own
@@ -92,7 +92,7 @@ keys through the dashboard login.
 ## What it sends
 
 `POST {relay_url}/installs/{install_key}/notify`, JSON. Ciphertext only; the relay never sees
-a title or body. See `hermex_push/payload.py` for the authoritative shapes.
+a title or body. See `hermix_push/payload.py` for the authoritative shapes.
 
 Notification (`kind` is `reply`, `approval`, `clarify`, `turn_error` or `delivery`):
 
@@ -215,14 +215,14 @@ would rewrite, are refused with 400 before git runs.
 
 ## Layout
 
-- `__init__.py` registers the `hermix` platform and the hooks (the Python package stays `hermex_push`).
-- `hermex_push/keys.py` key files; `privacy.py` sealing and keyed ids; `payload.py` event shapes;
+- `__init__.py` registers the `hermix` platform and the hooks (the Python package stays `hermix_push`).
+- `hermix_push/keys.py` key files; `privacy.py` sealing and keyed ids; `payload.py` event shapes;
   `sources.py` coarse source and skip rules; `progress.py` coalescing; `relay.py` background POST;
   `hooks.py` hook callbacks; `adapter.py` the platform adapter, target parser and standalone sender.
 - `dashboard/plugin_api.py` the capabilities, pairing, restart, git and provider-quota routes,
-  with `hermex_push/quota.py` behind the last; `dashboard/dist/index.js` a no-op the SPA
+  with `hermix_push/quota.py` behind the last; `dashboard/dist/index.js` a no-op the SPA
   requires.
-- `hermex_push_tests/` pytest suite; `fixtures/sealed_preview.json` is a fixed-key vector the
+- `hermix_push_tests/` pytest suite; `fixtures/sealed_preview.json` is a fixed-key vector the
   phone's Notification Service Extension tests can decrypt as well.
 
 `HERMIX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
@@ -242,7 +242,7 @@ uv venv .venv && uv pip install --python .venv/bin/python pytest cryptography fa
 venv above. To run them against hermes-agent itself, use a hermes-agent virtualenv, for example
 `uv run --no-project --python <hermes-agent venv>/bin/python --with pytest python -m pytest plugin -q`.
 
-Every merged change under `plugin/` bumps `PLUGIN_VERSION` in `hermex_push/__init__.py` (patch
+Every merged change under `plugin/` bumps `PLUGIN_VERSION` in `hermix_push/__init__.py` (patch
 for fixes, minor for features) along with `plugin.yaml`, `pyproject.toml` and
 `dashboard/manifest.json`; `test_plugin.py` fails when the four disagree.
 

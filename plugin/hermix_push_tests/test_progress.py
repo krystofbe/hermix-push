@@ -1,4 +1,4 @@
-from hermex_push.progress import GRACE_SECONDS, QUIET_SECONDS, ProgressCoalescer
+from hermix_push.progress import GRACE_SECONDS, QUIET_SECONDS, ProgressCoalescer
 
 
 def test_status_changes_always_emit_and_routine_updates_coalesce():
@@ -40,7 +40,7 @@ def test_sessions_are_independent():
 
 
 def test_sessions_that_never_end_are_bounded_and_stale_ones_forgotten():
-    from hermex_push.progress import MAX_SESSIONS, STALE_SECONDS
+    from hermix_push.progress import MAX_SESSIONS, STALE_SECONDS
     c = ProgressCoalescer()
     for i in range(MAX_SESSIONS + 100):
         c.tool_started(f"s{i}", "terminal", float(i))

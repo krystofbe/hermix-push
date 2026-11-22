@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from hermex_push.keys import Keys  # noqa: E402
-from hermex_push.relay import RelaySender  # noqa: E402
+from hermix_push.keys import Keys  # noqa: E402
+from hermix_push.relay import RelaySender  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

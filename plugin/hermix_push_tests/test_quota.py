@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hermex_push import quota
+from hermix_push import quota
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = "/api/plugins/hermix-push/provider-quota"
@@ -59,7 +59,7 @@ def route(monkeypatch):
 
     monkeypatch.setattr(quota, "AGENT", host)
     monkeypatch.setattr(quota, "in_profile_scope", scope)
-    spec = importlib.util.spec_from_file_location("hermex_push_quota_under_test", ROOT / "dashboard" / "plugin_api.py")
+    spec = importlib.util.spec_from_file_location("hermix_push_quota_under_test", ROOT / "dashboard" / "plugin_api.py")
     api = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = api
     spec.loader.exec_module(api)

@@ -1,9 +1,9 @@
 """One install serving every profile through the wrapped plugin manager (hermex#634)."""
 import pytest
 
-from hermex_push.hooks import HermexPush
-from hermex_push.privacy import unseal
-from hermex_push.scopes import serve_every_profile
+from hermix_push.hooks import HermexPush
+from hermix_push.privacy import unseal
+from hermix_push.scopes import serve_every_profile
 
 
 class DispatchMixin:
@@ -99,7 +99,7 @@ def test_undo_restores_the_inherited_methods_and_closes_served_pushes(served):
 def test_a_host_without_the_dispatch_methods_is_left_alone():
     bare = type("PluginManager", (), {})
     assert serve_every_profile(bare, lambda: "code-man") is None
-    assert bare.__dict__.get("_hermex_push_serves_every_profile") is None
+    assert bare.__dict__.get("_hermix_push_serves_every_profile") is None
 
 
 def test_a_failing_push_never_breaks_the_hosts_hooks(served):

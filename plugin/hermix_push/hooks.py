@@ -30,7 +30,7 @@ from .progress import ProgressCoalescer, ProgressSnapshot
 from .relay import RelaySender, ResultFn, allowed_relay_url, notify_url
 from .sources import coarse_source, should_notify
 
-logger = logging.getLogger("hermex_push")
+logger = logging.getLogger("hermix_push")
 
 CLARIFY_TOOL = "clarify"
 # The hermes-agent hooks this plugin observes; each is a same-named ``HermexPush`` method.
@@ -102,7 +102,7 @@ def bot_name_for(profile: str) -> str:
 _CRON_HEADER = re.compile(r"^Cronjob Response:\s*(?P<name>.+?)\s*\n\(job_id:[^)]*\)\s*\n-+\s*\n+(?P<body>.*)$", re.S)
 _CRON_FOOTER = re.compile(r"\n+To stop or manage this job, send me a new message.*\Z", re.S)
 # A user message that asks for a push or a timer; the agent then gets the delivery note (``pre_llm_call``).
-PUSH_INTENT = re.compile(r"push|notif|benachricht|erinner|remind|wecker|alarm", re.I)
+PUSH_INTENT = re.compile(r"(?<!git )(?<!force )\bpush|notif|benachricht|erinner|remind|wecker|alarm", re.I)
 
 
 def parse_delivery(message: str) -> tuple[str, str]:
@@ -156,7 +156,7 @@ def clarify_question(args: Optional[dict[str, Any]]) -> str:
 
 class HermexPush:
     # Marks this plugin's hook callbacks across module copies (see ``scopes``).
-    is_hermex_push = True
+    is_hermix_push = True
 
     def __init__(
         self, *, profile: str = "", sender: Optional[RelaySender] = None,

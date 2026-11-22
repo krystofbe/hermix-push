@@ -1,7 +1,7 @@
 from cryptography.exceptions import InvalidTag
 import pytest
 
-from hermex_push.privacy import keyed_id, preview_aad, seal, unseal
+from hermix_push.privacy import keyed_id, preview_aad, seal, unseal
 
 
 def test_seal_round_trips_with_matching_install_key(keys):

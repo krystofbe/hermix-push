@@ -60,13 +60,15 @@ def _migrate_legacy_keys(directory: Path, legacy: Path) -> None:
 
 def _copy_pre_fork_keys(directory: Path, home: Path | None) -> None:
     """Pairings made under the old plugin name (``plugin-data/hermex-push``) carry over: a
-    complete pair is copied, never over keys that exist and never deleted from the old place."""
+    complete old pair fills whichever of the two files is missing here (both on first use, one
+    after an interrupted copy), never over a file that exists and never deleted from the old place."""
     old = (home or hermes_root()) / "plugin-data" / LEGACY_PLUGIN_NAME
     names = ("install_key", "preview_key")
-    if any((directory / n).exists() for n in names) or not all((old / n).is_file() for n in names):
+    if not all((old / n).is_file() for n in names):
         return
     for name in names:
-        _write_private(directory / name, (old / name).read_bytes())
+        if not (directory / name).exists():
+            _write_private(directory / name, (old / name).read_bytes())
 
 
 @dataclass(frozen=True)

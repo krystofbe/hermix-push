@@ -6,10 +6,10 @@ import types
 
 import pytest
 
-from hermex_push import adapter
-from hermex_push.hooks import HermexPush, parse_delivery
-from hermex_push.privacy import unseal
-from hermex_push.relay import RelaySender
+from hermix_push import adapter
+from hermix_push.hooks import HermexPush, parse_delivery
+from hermix_push.privacy import unseal
+from hermix_push.relay import RelaySender
 
 WRAPPED = ("Cronjob Response: Flachwitz\n(job_id: 80e17aa69126)\n-------------\n\n**Warum** der Witz?\n\n"
            'To stop or manage this job, send me a new message (e.g. "stop reminder Flachwitz").')
@@ -116,3 +116,19 @@ def test_the_agent_learns_the_target_on_the_first_turn_or_when_asked_for_a_push(
     assert push.pre_llm_call(session_id="s1", platform="ios", user_message=[{"type": "text", "text": "send a PUSH"}])
     for session, platform in [("s2", "telegram"), ("cron_9", "cron"), ("s3", "")]:
         assert push.pre_llm_call(session_id=session, platform=platform, user_message="push", is_first_turn=True) is None
+
+
+def test_the_gateway_gets_the_home_channel_that_send_message_without_a_target_needs(monkeypatch):
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.test")
+    assert adapter.env_enablement() == {"relay_url": "https://relay.test",
+                                        "home_channel": {"chat_id": "home", "name": "iPhone"}}
+    monkeypatch.delenv("HERMIX_PUSH_RELAY_URL")
+    assert adapter.env_enablement() is None
+
+
+def test_git_push_is_not_a_push_request(keys):
+    push = make_push(keys, FakeRelay((200, "accepted")), schedule=lambda d, f: None)
+    for text in ["please git push the branch", "git push --force"]:
+        assert push.pre_llm_call(session_id="s1", platform="ios", user_message=text) is None, text
+    for text in ["Erinnere mich in 5 Minuten", "schick mir eine Push-Nachricht", "send me a push"]:
+        assert push.pre_llm_call(session_id="s1", platform="ios", user_message=text), text

@@ -3,8 +3,8 @@ import types
 
 import pytest
 
-from hermex_push.hooks import HermexPush, bot_name_for
-from hermex_push.privacy import unseal
+from hermix_push.hooks import HermexPush, bot_name_for
+from hermix_push.privacy import unseal
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def test_questions_are_flattened_but_approval_commands_stay_verbatim(push, sende
 
 
 def test_clarify_question_shapes():
-    from hermex_push.hooks import clarify_question
+    from hermix_push.hooks import clarify_question
     assert clarify_question({"questions": [{"question": "A?"}, {"question": "B?"}]}) == "A? (+1 more)"
     assert clarify_question({"question": "Legacy?"}) == "Legacy?"
     assert clarify_question({}) == "The agent has a question for you."
@@ -128,7 +128,7 @@ def test_multimodal_user_message_still_pushes(push, sender, keys):
 
 
 def test_seal_failure_sends_a_content_free_event(keys, sender, monkeypatch):
-    import hermex_push.payload as payload
+    import hermix_push.payload as payload
     monkeypatch.setattr(payload, "seal", lambda *a, **k: None)
     p = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r", schedule=lambda d, f: None)
     run_turn(p, reply="SECRET-REPLY-8f3a")
@@ -214,7 +214,7 @@ def test_scheduler_failure_does_not_wedge_flushing(keys, sender):
 
 
 def test_close_stops_the_relay_thread():
-    from hermex_push.relay import RelaySender
+    from hermix_push.relay import RelaySender
     sender = RelaySender(post=lambda u, b: (200, "accepted"))
     p = HermexPush(sender=sender, keys_loader=lambda: None, relay_url=lambda: "", schedule=lambda d, f: None)
     sender.enqueue("https://r/installs/k/notify", {"kind": "reply"})
@@ -264,7 +264,7 @@ def test_nothing_is_sent_without_a_relay_url_or_keys(keys, sender):
 
 
 def test_profile_without_its_own_relay_url_inherits_the_root_dotenv(hermes_home, monkeypatch):
-    from hermex_push.hooks import relay_url_from_env
+    from hermix_push.hooks import relay_url_from_env
     (hermes_home / ".env").write_text("OTHER=1\nHERMIX_PUSH_RELAY_URL=https://root.test/\n")
     profile = hermes_home / "profiles" / "dev"
     profile.mkdir(parents=True)
@@ -275,7 +275,7 @@ def test_profile_without_its_own_relay_url_inherits_the_root_dotenv(hermes_home,
 
 
 def test_the_pre_fork_relay_url_variable_is_still_read_but_the_new_one_wins(hermes_home, monkeypatch):
-    from hermex_push.hooks import relay_url_from_env
+    from hermix_push.hooks import relay_url_from_env
     (hermes_home / ".env").write_text("HERMEX_PUSH_RELAY_URL=https://old-dotenv.test\n")
     assert relay_url_from_env() == "https://old-dotenv.test"
     monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://old-env.test")
@@ -285,7 +285,7 @@ def test_the_pre_fork_relay_url_variable_is_still_read_but_the_new_one_wins(herm
 
 
 def test_relay_url_from_env_refuses_cleartext_to_remote_hosts(monkeypatch):
-    from hermex_push.hooks import relay_url_from_env
+    from hermix_push.hooks import relay_url_from_env
     monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "http://relay.example")
     assert relay_url_from_env() == ""
     monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.example")

@@ -20,17 +20,17 @@ from typing import Any, Callable, Optional
 
 from .hooks import HOOK_NAMES, HermexPush
 
-logger = logging.getLogger("hermex_push")
+logger = logging.getLogger("hermix_push")
 
 # Stored on the manager class, not in this module: hermes-agent may import a fresh copy of the
 # plugin per profile, and every copy must see that one of them already wrapped the class.
-_MARK = "_hermex_push_serves_every_profile"
+_MARK = "_hermix_push_serves_every_profile"
 _WRAPPED = ("invoke_hook", "has_hook")
 _lock = threading.Lock()
 
 
 def _has_own_copy(manager: Any, hook_name: str) -> bool:
-    return any(getattr(getattr(callback, "__self__", None), "is_hermex_push", False)
+    return any(getattr(getattr(callback, "__self__", None), "is_hermix_push", False)
                for callback in manager.iter_hook_callbacks(hook_name))
 
 

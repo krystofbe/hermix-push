@@ -18,7 +18,7 @@ import logging
 import secrets
 from typing import Any, Optional
 
-logger = logging.getLogger("hermex_push")
+logger = logging.getLogger("hermix_push")
 
 AAD_PREFIX = b"hermex-preview-v1:"
 NONCE_BYTES = 12

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from hermex_push.payload import notify_event, preview, progress_event
-from hermex_push.privacy import unseal
+from hermix_push.payload import notify_event, preview, progress_event
+from hermix_push.privacy import unseal
 
 TOP_LEVEL = {"v", "kind", "event_id", "thread_id", "collapse_id", "session_id", "source", "is_subagent", "sent_at", "sealed"}
 

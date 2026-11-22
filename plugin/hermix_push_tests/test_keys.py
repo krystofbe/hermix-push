@@ -1,6 +1,6 @@
 import stat
 
-from hermex_push.keys import load_or_create_keys
+from hermix_push.keys import load_or_create_keys
 
 
 def test_keys_are_created_once_with_private_permissions(hermes_home):
@@ -60,3 +60,16 @@ def test_an_incomplete_old_pair_is_not_copied(hermes_home):
     old.mkdir(parents=True)
     (old / "install_key").write_text("ef" * 32)
     assert load_or_create_keys().install_key != "ef" * 32
+
+
+def test_an_interrupted_copy_is_completed_from_a_complete_old_pair(hermes_home):
+    old = hermes_home / "plugin-data" / "hermex-push"
+    new = hermes_home / "plugin-data" / "hermix-push"
+    old.mkdir(parents=True)
+    new.mkdir(parents=True)
+    (old / "install_key").write_text("ef" * 32)
+    (old / "preview_key").write_bytes(bytes(range(32)))
+    (new / "install_key").write_text("ab" * 32)  # only the first write landed
+    keys = load_or_create_keys()
+    assert keys.install_key == "ab" * 32, "an existing key is never overwritten"
+    assert keys.preview_key == bytes(range(32))

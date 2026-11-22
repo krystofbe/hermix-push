@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # The dashboard imports its API file standalone, so shared code is a package imported by name
-# from the plugin root (see hermex_push/__init__.py). Appended, never prepended: nothing in
+# from the plugin root (see hermix_push/__init__.py). Appended, never prepended: nothing in
 # here may shadow a host module. With the plugin installed in several profiles the first copy
 # imported serves every scope in that process; restart after upgrading.
 _ROOT = str(Path(__file__).resolve().parent)
@@ -20,12 +20,12 @@ if _ROOT not in sys.path:
 
 import os  # noqa: E402
 
-from hermex_push import HOME_CHANNEL_ENV, HOME_CHAT_ID, PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
-from hermex_push.adapter import (  # noqa: E402
+from hermix_push import HOME_CHANNEL_ENV, HOME_CHAT_ID, PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
+from hermix_push.adapter import (  # noqa: E402
     PLATFORM_HINT, check_requirements, env_enablement, is_connected, make_adapter, parse_target, standalone_send,
 )
-from hermex_push.hooks import HermexPush  # noqa: E402
-from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
+from hermix_push.hooks import HermexPush  # noqa: E402
+from hermix_push.scopes import serve_every_profile_in_host  # noqa: E402
 
 
 def register(ctx) -> None:

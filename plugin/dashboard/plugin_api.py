@@ -27,7 +27,7 @@ argv, non-interactive env). An option-like ``remote`` or ``start``, and a ``name
 branch sanitizer would rewrite, are refused before git runs.
 
 ``GET /provider-quota?provider=&profile=&refresh=`` (hermex#1237) answers one provider's account
-limits for a Profile in hermes-webui's ``/api/provider/quota`` envelope (``hermex_push.quota``).
+limits for a Profile in hermes-webui's ``/api/provider/quota`` envelope (``hermix_push.quota``).
 """
 
 from __future__ import annotations
@@ -48,10 +48,10 @@ _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 
-from hermex_push import PLATFORM_NAME, PLUGIN_VERSION, RELAY_URL_ENV, quota  # noqa: E402
-from hermex_push.hooks import relay_url_from_env  # noqa: E402
-from hermex_push.keys import load_or_create_keys  # noqa: E402
-from hermex_push.payload import PAYLOAD_VERSION  # noqa: E402
+from hermix_push import PLATFORM_NAME, PLUGIN_VERSION, RELAY_URL_ENV, quota  # noqa: E402
+from hermix_push.hooks import relay_url_from_env  # noqa: E402
+from hermix_push.keys import load_or_create_keys  # noqa: E402
+from hermix_push.payload import PAYLOAD_VERSION  # noqa: E402
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
