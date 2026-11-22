@@ -125,7 +125,11 @@ def _current_cron() -> tuple[str, str]:
 def delivery_note(session_id: str) -> str:
     return (
         f"Hermix push: to notify the user on their iPhone now or later, use cronjob_manage deliver='hermix:{session_id}' "
-        "(tap opens this chat) or 'hermix'; send_message target 'hermix:home' (or 'hermix:<session_id>'). deliver='origin' from this chat does not push."
+        "(tap opens this chat) or 'hermix'; send_message target 'hermix:home' (or 'hermix:<session_id>'). "
+        "deliver='origin' from this chat does not push. Pushes are normal banners. Append ':urgent' "
+        "(deliver='hermix:urgent' or 'hermix:<session_id>:urgent') only when the time itself matters: a reminder "
+        "or alarm at a set time, a deadline, or the user said it is urgent. Reports, digests, watcher results "
+        "and routines stay normal."
     )
 
 
@@ -254,7 +258,7 @@ class HermexPush:
 
     # -- delivery (cron ``deliver: hermix``, send_message) ---------------------------------
 
-    def deliver_message(self, chat_id: str, content: str) -> tuple[bool, str]:
+    def deliver_message(self, chat_id: str, content: str, urgent: bool = False) -> tuple[bool, str]:
         """Send one scheduled or requested message to every paired phone and wait for the relay's
         answer: ``(True, event_id)`` or ``(False, reason)``. ``chat_id`` is ``home`` (a tap opens
         the app) or a session id (a tap opens that chat). Never logs the content."""
@@ -271,7 +275,7 @@ class HermexPush:
         ref = hashlib.sha256(f"{execution_id}\n{chat_id}\n{content}".encode()).hexdigest()[:32] if execution_id \
             else uuid.uuid4().hex
         event = notify_event(kind="delivery", session_id=chat_id, event_ref=ref, source="other",
-                             is_subagent=False, keys=keys, preview=sealed, now=self._now())
+                             is_subagent=False, keys=keys, preview=sealed, now=self._now(), urgent=urgent)
         answers: list[str] = []
         if not self._sender.deliver(notify_url(url, keys.install_key), event, answers.append):
             return False, "hermix: relay rejected or unreachable"

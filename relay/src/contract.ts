@@ -29,6 +29,8 @@ const notificationSchema = z.object({
   ...common,
   kind: z.enum(['reply', 'approval', 'clarify', 'turn_error', 'delivery']),
   collapse_id: id,
+  // Only a `delivery` the sender marked as time-critical; absent (an older plugin) means normal.
+  urgent: z.boolean().optional(),
   sealed: z.string().min(40).max(12000).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).nullable(),
 }).strict();
 const progressSchema = z.object({

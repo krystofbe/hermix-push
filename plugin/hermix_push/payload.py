@@ -8,7 +8,8 @@ Notification event (``POST /installs/{install_key}/notify``)::
      "sent_at": <unix seconds>, "sealed": <base64> | null}
 
 ``delivery`` is a message the user asked to be pushed (cron ``deliver: hermix``, send_message);
-its ``collapse_id`` is per event, so two reminders never replace each other.
+its ``collapse_id`` is per event, so two reminders never replace each other. ``urgent: true``
+(a plaintext boolean, sent only when true) asks the relay for a time-sensitive banner.
 
 ``sealed`` decrypts to ``{"title", "subtitle", "body", "profile", "request_id", "bot_name"}``.
 ``bot_name`` is the name the Hermex roster shows for the bot, omitted when unknown; the phone
@@ -149,7 +150,7 @@ def _identity(keys: Keys, kind: str, session_id: str, event_ref: str) -> dict[st
 
 def notify_event(
     *, kind: str, session_id: str, event_ref: str, source: str, is_subagent: bool, keys: Keys,
-    preview: Optional[dict[str, Any]], now: Optional[float] = None,
+    preview: Optional[dict[str, Any]], now: Optional[float] = None, urgent: bool = False,
 ) -> dict[str, Any]:
     """Build one notification event. ``event_ref`` makes ``event_id`` stable across retries
     (turn id, approval request id, tool call id)."""
@@ -158,7 +159,7 @@ def notify_event(
     sealed = None
     if preview is not None:
         sealed = seal(preview, preview_key=keys.preview_key, install_key=keys.install_key)
-    return {
+    event = {
         "v": PAYLOAD_VERSION,
         "kind": kind,
         **_identity(keys, kind, session_id, event_ref),
@@ -168,6 +169,9 @@ def notify_event(
         "sent_at": int(now if now is not None else time.time()),
         "sealed": sealed,
     }
+    if urgent and kind == "delivery":
+        event["urgent"] = True
+    return event
 
 
 def progress_event(

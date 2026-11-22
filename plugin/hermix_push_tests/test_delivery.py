@@ -35,9 +35,25 @@ def sealed(event, keys):
 
 
 @pytest.mark.parametrize("ref,ok", [("home", True), ("20260101_120000_abc123", True), ("a.b-c_d", True),
-                                    ("", False), ("a b", False), ("a/b", False), ("x" * 201, False)])
+                                    ("", False), ("a b", False), ("a/b", False), ("x" * 201, False),
+                                    ("home:other", False), ("a:urgent:x", False), (":urgent", False)])
 def test_parse_target_accepts_home_and_session_ids_only(ref, ok):
     assert adapter.parse_target(ref) == ((ref, None) if ok else None)
+
+
+def test_the_urgent_marker_rides_in_the_thread_id():
+    assert adapter.parse_target("urgent") == ("home", "urgent")
+    assert adapter.parse_target("home:urgent") == ("home", "urgent")
+    assert adapter.parse_target("sess-1:urgent") == ("sess-1", "urgent")
+
+
+def test_only_a_marked_delivery_asks_for_a_time_sensitive_banner(keys, monkeypatch):
+    relay = FakeRelay((200, "accepted"))
+    monkeypatch.setattr(adapter, "shared_push", lambda: make_push(keys, relay))
+    asyncio.run(adapter.standalone_send(None, "home", "plain"))
+    asyncio.run(adapter.standalone_send(None, "home", "now", thread_id="urgent"))
+    plain, marked = (event for _, event in relay.posts)
+    assert "urgent" not in plain and marked["urgent"] is True and marked["kind"] == "delivery"
 
 
 def test_cron_wrapper_gives_job_name_and_body_without_the_footer():

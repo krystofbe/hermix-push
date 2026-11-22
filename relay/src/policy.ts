@@ -21,9 +21,10 @@ const holds: Record<NotificationEvent['kind'], number> = {
 export function deliveryPolicy(event: PushEvent, device: Device, hasActivity: boolean, now: number): Delivery {
   if (event.kind === 'progress') return hasActivity ? { type: 'activity' } : { type: 'none' };
   // The user asked for this one: no activity, presence lease, replies switch or subagent mute holds it back.
+  // It breaks through a Focus only when the sender marked it urgent (the time itself matters).
   if (event.kind === 'delivery') {
     return {
-      type: 'banner', interruption: 'time-sensitive', collapseId: event.collapse_id, threadId: event.thread_id,
+      type: 'banner', interruption: event.urgent ? 'time-sensitive' : 'active', collapseId: event.collapse_id, threadId: event.thread_id,
       preview: device.prefs.previews, hold: holds.delivery,
     };
   }

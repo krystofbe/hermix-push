@@ -18,8 +18,11 @@ describe('delivery policy', () => {
     expect(deliveryPolicy(progress, device, true, 0)).toEqual({ type: 'activity' });
     expect(deliveryPolicy(progress, device, false, 0)).toEqual({ type: 'none' });
   });
-  it('banners scheduled deliveries time-sensitive through every suppression, and honors only the preview preference', () => {
-    const delivery = { ...notification, kind: 'delivery' } as const;
+  it('banners scheduled deliveries through every suppression, time-sensitive only when marked urgent, and honors only the preview preference', () => {
+    const delivery = { ...notification, kind: 'delivery', urgent: true } as const;
+    expect(deliveryPolicy({ ...delivery, urgent: false }, device, false, 0)).toMatchObject({ type: 'banner', interruption: 'active', hold: 86400 });
+    const { urgent: _unmarked, ...older } = delivery;
+    expect(deliveryPolicy(older, device, true, 0)).toMatchObject({ type: 'banner', interruption: 'active' });
     const quiet = { ...device, prefs: { ...device.prefs, replies: false, previews: false, presence_suppression: true, active_session_id: notification.session_id, active_until: 100 } };
     for (const [target, hasActivity, event] of [[device, false, delivery], [device, true, delivery], [quiet, true, delivery], [device, false, { ...delivery, is_subagent: true }]] as const) {
       expect(deliveryPolicy(event, target, hasActivity, 99)).toMatchObject({ type: 'banner', interruption: 'time-sensitive', hold: 86400, collapseId: notification.collapse_id });

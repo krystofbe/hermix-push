@@ -19,20 +19,31 @@ logger = logging.getLogger("hermix_push")
 _SESSION_REF = re.compile(r"[A-Za-z0-9_.-]{1,200}")
 
 
-def parse_target(ref: str) -> Optional[tuple[str, None]]:
+URGENT = "urgent"
+
+
+def parse_target(ref: str) -> Optional[tuple[str, Optional[str]]]:
     """``parse_target_ref_fn``: ``hermix`` (the cron home, ``home``) and ``hermix:<session>`` are
-    the only valid targets; anything else is refused instead of guessed."""
+    the valid targets; a trailing ``:urgent`` (alone: ``hermix:urgent`` for home) marks the
+    delivery time-critical and travels as Hermes' ``thread_id``, which every send path hands on
+    unchanged (cron's ``resolve_send_target``, ``send_message``, adapter metadata, standalone
+    sender). Anything else is refused instead of guessed."""
     ref = (ref or "").strip()
-    return (ref, None) if _SESSION_REF.fullmatch(ref) else None
+    if ref == URGENT:
+        return HOME_CHAT_ID, URGENT
+    chat_id, sep, flag = ref.partition(":")
+    if sep and flag != URGENT:
+        return None
+    return (chat_id, URGENT if sep else None) if _SESSION_REF.fullmatch(chat_id) else None
 
 
-async def deliver(chat_id: str, content: str) -> tuple[bool, str]:
-    return await asyncio.to_thread(shared_push().deliver_message, chat_id, content)
+async def deliver(chat_id: str, content: str, thread_id: Optional[str] = None) -> tuple[bool, str]:
+    return await asyncio.to_thread(shared_push().deliver_message, chat_id, content, thread_id == URGENT)
 
 
-async def standalone_send(pconfig: Any, chat_id: str, message: str, **_: Any) -> dict:
+async def standalone_send(pconfig: Any, chat_id: str, message: str, *, thread_id: Optional[str] = None, **_: Any) -> dict:
     """``standalone_sender_fn``: delivery from a process without the live adapter."""
-    ok, detail = await deliver(chat_id or HOME_CHAT_ID, message)
+    ok, detail = await deliver(chat_id or HOME_CHAT_ID, message, thread_id)
     return {"success": True, "message_id": detail} if ok else {"error": detail}
 
 
@@ -78,7 +89,7 @@ def make_adapter(config: Any):
 
         async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None,
                        metadata: Optional[Dict[str, Any]] = None) -> SendResult:
-            ok, detail = await deliver(chat_id or HOME_CHAT_ID, content)
+            ok, detail = await deliver(chat_id or HOME_CHAT_ID, content, (metadata or {}).get("thread_id"))
             return SendResult(success=True, message_id=detail) if ok else SendResult(success=False, error=detail)
 
         async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
