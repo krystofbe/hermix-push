@@ -50,11 +50,11 @@ def is_connected(config: Any = None) -> bool:
 
 
 def env_enablement() -> Optional[dict]:
-    """Auto-enable the platform when the relay URL is set, so ``gateway status`` shows it. The
-    ``home_channel`` key becomes the gateway's home channel (gateway/config_env.py), which
-    ``send_message`` without a chat id reads."""
+    """Auto-enable the platform when the relay URL is set, so ``gateway status`` shows it. No
+    ``home_channel`` on purpose: Hermes sends its system notices (gateway restarted, shutdown)
+    to a platform's home channel, which would push the phone on every restart."""
     url = relay_url_from_env()
-    return {"relay_url": url, "home_channel": {"chat_id": HOME_CHAT_ID, "name": "iPhone"}} if url else None
+    return {"relay_url": url} if url else None
 
 
 def make_adapter(config: Any):

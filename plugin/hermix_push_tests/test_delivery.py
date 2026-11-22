@@ -11,7 +11,7 @@ from hermix_push.hooks import HermexPush, parse_delivery
 from hermix_push.privacy import unseal
 from hermix_push.relay import RelaySender
 
-WRAPPED = ("Cronjob Response: Flachwitz\n(job_id: 80e17aa69126)\n-------------\n\n**Warum** der Witz?\n\n"
+WRAPPED = ("Cronjob Response: Flachwitz\n(job_id: 0123456789ab)\n-------------\n\n**Warum** der Witz?\n\n"
            'To stop or manage this job, send me a new message (e.g. "stop reminder Flachwitz").')
 
 
@@ -34,7 +34,7 @@ def sealed(event, keys):
     return unseal(event["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
 
 
-@pytest.mark.parametrize("ref,ok", [("home", True), ("20261122_133047_d42ddd", True), ("a.b-c_d", True),
+@pytest.mark.parametrize("ref,ok", [("home", True), ("20260101_120000_abc123", True), ("a.b-c_d", True),
                                     ("", False), ("a b", False), ("a/b", False), ("x" * 201, False)])
 def test_parse_target_accepts_home_and_session_ids_only(ref, ok):
     assert adapter.parse_target(ref) == ((ref, None) if ok else None)
@@ -118,12 +118,20 @@ def test_the_agent_learns_the_target_on_the_first_turn_or_when_asked_for_a_push(
         assert push.pre_llm_call(session_id=session, platform=platform, user_message="push", is_first_turn=True) is None
 
 
-def test_the_gateway_gets_the_home_channel_that_send_message_without_a_target_needs(monkeypatch):
+def test_the_platform_sets_no_home_channel_so_system_notices_never_push(monkeypatch):
     monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.test")
-    assert adapter.env_enablement() == {"relay_url": "https://relay.test",
-                                        "home_channel": {"chat_id": "home", "name": "iPhone"}}
+    assert adapter.env_enablement() == {"relay_url": "https://relay.test"}
     monkeypatch.delenv("HERMIX_PUSH_RELAY_URL")
     assert adapter.env_enablement() is None
+
+
+def test_send_message_target_hermix_home_resolves_and_delivers(keys, monkeypatch):
+    chat_id, thread = adapter.parse_target("home")
+    assert (chat_id, thread) == ("home", None)
+    relay = FakeRelay((200, "accepted"))
+    monkeypatch.setattr(adapter, "shared_push", lambda: make_push(keys, relay))
+    assert asyncio.run(adapter.standalone_send(None, chat_id, "Test"))["success"] is True
+    assert relay.posts[0][1]["session_id"] == "home"
 
 
 def test_git_push_is_not_a_push_request(keys):

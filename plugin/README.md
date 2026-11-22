@@ -22,7 +22,7 @@ user configuration is needed.
 
 - Cron `deliver: hermix` (or `all`, or `origin` for a job without an origin) pushes to every paired
   phone; a tap opens the app. `deliver: hermix:<session_id>` pushes the same way, and a tap opens
-  that chat. `send_message` accepts the same targets. Valid refs are `home` and
+  that chat. `send_message` needs the explicit target `hermix:home` or `hermix:<session_id>`: the plugin sets no home channel on purpose, because Hermes sends its system notices (gateway restarted, shutdown) to a platform's home channel and that would push the phone on every restart. Valid refs are `home` and
   `[A-Za-z0-9_.-]{1,200}`; anything else is refused.
 - The banner is a sealed `delivery` event (title "`<bot>` · Scheduled task", subtitle the cron job's
   name, body the message, 400 characters). The cron wrapper ("Cronjob Response: ...") is parsed off;

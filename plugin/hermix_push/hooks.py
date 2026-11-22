@@ -125,7 +125,7 @@ def _current_cron() -> tuple[str, str]:
 def delivery_note(session_id: str) -> str:
     return (
         f"Hermix push: to notify the user on their iPhone now or later, use cronjob_manage deliver='hermix:{session_id}' "
-        "(tap opens this chat) or 'hermix'; send_message target 'hermix'. deliver='origin' from this chat does not push."
+        "(tap opens this chat) or 'hermix'; send_message target 'hermix:home' (or 'hermix:<session_id>'). deliver='origin' from this chat does not push."
     )
 
 
