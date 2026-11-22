@@ -7,8 +7,11 @@ export type Delivery =
   | { type: 'banner'; interruption: 'active' | 'time-sensitive'; collapseId: string; threadId: string; preview: boolean; hold: number };
 
 // An approval is moot after the host's five-minute approval timeout, a question after its one-hour
-// clarify timeout; a reply or failure is still news an hour later.
-const holds: Record<NotificationEvent['kind'], number> = { approval: 300, clarify: 3600, reply: 3600, turn_error: 3600 };
+// clarify timeout; a reply or failure is still news an hour later, and a scheduled delivery
+// (cron `deliver: hermix`, send_message) still makes sense a day later.
+const holds: Record<NotificationEvent['kind'], number> = {
+  approval: 300, clarify: 3600, reply: 3600, turn_error: 3600, delivery: 86400,
+};
 
 /**
  * All per-device delivery etiquette lives here; no storage, clocks, or network calls.
@@ -17,6 +20,13 @@ const holds: Record<NotificationEvent['kind'], number> = { approval: 300, clarif
  */
 export function deliveryPolicy(event: PushEvent, device: Device, hasActivity: boolean, now: number): Delivery {
   if (event.kind === 'progress') return hasActivity ? { type: 'activity' } : { type: 'none' };
+  // The user asked for this one: no activity, presence lease, replies switch or subagent mute holds it back.
+  if (event.kind === 'delivery') {
+    return {
+      type: 'banner', interruption: 'time-sensitive', collapseId: event.collapse_id, threadId: event.thread_id,
+      preview: device.prefs.previews, hold: holds.delivery,
+    };
+  }
   if (hasActivity && event.kind !== 'approval' && event.kind !== 'clarify') return { type: 'none' };
   const prefs = device.prefs;
   if (event.is_subagent && prefs.mute_subagents) return { type: 'none' };

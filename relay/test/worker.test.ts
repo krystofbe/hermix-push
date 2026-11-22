@@ -153,6 +153,16 @@ it('retries failed recipients without repeating successful recipients', async ()
   expect(vi.mocked(ApnsSender.prototype.send).mock.calls.map(([push]) => push.token)).toEqual([device.device_token, '2'.repeat(64), '2'.repeat(64)]);
 });
 
+it('accepts a delivery, deduplicates its replay, and answers no_devices without a paired phone', async () => {
+  const delivery = { ...notification, kind: 'delivery', event_id: '9'.repeat(32) };
+  expect(await (await request('notify', 'POST', delivery)).json()).toEqual({ result: 'no_devices' });
+  expect(ApnsSender.prototype.send).not.toHaveBeenCalled();
+  await register();
+  expect(await (await request('notify', 'POST', delivery)).json()).toEqual({ result: 'accepted' });
+  expect(await (await request('notify', 'POST', delivery)).json()).toEqual({ result: 'deduplicated' });
+  expect(ApnsSender.prototype.send).toHaveBeenCalledTimes(1);
+});
+
 it('removes invalid device tokens without revoking other devices', async () => {
   await register();
   await request('devices', 'POST', { ...device, device_token: '2'.repeat(64) });
@@ -353,6 +363,7 @@ it('sweeps legacy receipts in batches, including rows written before the due ind
 });
 
 it('indexes again after a rollback and redeploy, because the earlier version deletes the marker', async () => {
+  await register();
   const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
   const stub = await coordinator();
   await request('notify', 'POST', notification);
@@ -376,6 +387,7 @@ it('indexes again after a rollback and redeploy, because the earlier version del
 });
 
 it('sweeps expired receipts together on one minute-aligned alarm', async () => {
+  await register();
   const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_001_000);
   const stub = await coordinator();
   await request('notify', 'POST', notification);
@@ -391,6 +403,7 @@ it('sweeps expired receipts together on one minute-aligned alarm', async () => {
 });
 
 it('enforces the per-install receipt cap and frees it after the sweep', async () => {
+  await register();
   const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
   const stub = await coordinator();
   const hash = await sha256(installKey);

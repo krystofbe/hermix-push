@@ -171,6 +171,8 @@ export class InstallCoordinator extends DurableObject<Env> {
   }
 
   private async notify(installHash: string, event: NotificationEvent, registry: Registry): Promise<Outcome> {
+    // Before any receipt, so the plugin can tell the user nobody is paired.
+    if (Object.keys(registry).length === 0) return ok('no_devices');
     const now = Date.now();
     const key = `event:${event.event_id}`;
     const stored = await this.ctx.storage.get<Receipt>(key);
