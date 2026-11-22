@@ -84,13 +84,14 @@ def relay_url_from_env() -> str:
 
 def session_title(session_id: str) -> str:
     """The chat's title from Hermes' session store (``SessionDB.get_session_title``, the call the
-    host itself uses for the status bar and other plugins use for chat names). Empty when the
-    chat has no title yet, the id is unknown or the store is unavailable; never the user's text."""
+    host itself uses for the status bar). Opened read-only and closed again, so a push never takes
+    the writer lock or initialises the schema. Empty when the chat has no title yet, the id is
+    unknown or the store is unavailable; never the user's text."""
     if not session_id:
         return ""
     try:
         from hermes_state import SessionDB
-        db = SessionDB()
+        db = SessionDB(read_only=True)
         try:
             return str(db.get_session_title(session_id) or "").strip()
         finally:
@@ -101,7 +102,8 @@ def session_title(session_id: str) -> str:
 
 def bot_name_for(profile: str) -> str:
     """The name Hermex's bot roster shows for a Profile: its Desktop title, then its
-    ``display_name``, then the slug, with the default Profile as "Hermes". Read from the host's
+    ``display_name``, then the slug. Only banners of a non-default Profile carry it; the default
+    Profile adds no name to a title ("Hermes" is just this function's fallback). Read from the host's
     ``profile.yaml`` on every banner (hermes-agent caches the read by file signature), so a rename
     shows on the next one. ``hermes_cli.profiles`` is a hermes-agent internal: a host without it,
     or a read that fails, gets the slug."""
@@ -269,7 +271,7 @@ class HermexPush:
     def _notify(self, kind: str, session_id: str, event_ref: str, **content: Any) -> None:
         """Seal one banner. ``content`` is the ``preview`` fields besides the title: replies are
         titled by the chat's title, the kinds in ``TITLE_LABELS`` by their label with the chat's
-        title as subtitle (unless the caller gave one and the chat has none)."""
+        title as subtitle (an approval keeps its description, the chat's title only when that is empty)."""
         platform, source, is_subagent = self._session(session_id)
         if not should_notify(session_id, platform):
             return
@@ -278,8 +280,8 @@ class HermexPush:
             return
         chat = self._title_lookup(session_id)
         label = TITLE_LABELS.get(kind)
-        if label:
-            content["subtitle"] = chat or content.get("subtitle", "")
+        if label:  # an approval keeps its command description: it explains the risk
+            content["subtitle"] = content.get("subtitle") or chat
         title, name = self._titled(label or chat)
         sealed = preview(title=title, bot_name=name, profile=self._profile, **content)
         self._send(notify_event(
@@ -410,12 +412,12 @@ class HermexPush:
             logger.warning("hermix-push: pre_llm_call failed", exc_info=True)
         return None
 
-    def post_llm_call(self, *, session_id: str = "", user_message: Any = "", assistant_response: Any = "",
+    def post_llm_call(self, *, session_id: str = "", assistant_response: Any = "",
                       platform: str = "", **_: Any) -> None:
         try:
             with self._lock:
                 self._remember_platform(session_id, platform)
-                self._reply_by_session.remember(session_id, (user_message, assistant_response))
+                self._reply_by_session.remember(session_id, assistant_response)
         except Exception:
             logger.warning("hermix-push: post_llm_call failed", exc_info=True)
 
@@ -435,8 +437,7 @@ class HermexPush:
                 self._notify("turn_error", session_id, ref,
                              body=turn_exit_reason or "The agent stopped without finishing.")
             elif completed and captured is not None:
-                user_message, reply = captured
-                self._notify("reply", session_id, ref, body=reply)
+                self._notify("reply", session_id, ref, body=captured)
         except Exception:
             logger.warning("hermix-push: on_session_end failed; a push was dropped", exc_info=True)
 

@@ -12,9 +12,10 @@ its ``collapse_id`` is per event, so two reminders never replace each other. ``u
 (a plaintext boolean, sent only when true) asks the relay for a time-sensitive banner.
 
 ``sealed`` decrypts to ``{"title", "subtitle", "body", "profile", "request_id", "bot_name"}``.
-``bot_name`` is the name the Hermex roster shows for the bot, omitted when unknown; the phone
-builds a title in its own language from it and ``kind``, and older builds show the English
-``title``. A null ``sealed`` means the host could not encrypt; the phone shows a generic
+``title`` is the chat's title (reply), the job name (delivery) or an English label (approval,
+clarify, turn_error), each possibly empty; ``bot_name`` is present only for a non-default Profile,
+which the phone puts in front of the title. For the three label kinds the phone builds the label
+in its own language from ``kind``; older builds show the English ``title``. A null ``sealed`` means the host could not encrypt; the phone shows a generic
 "New activity" banner.
 
 Progress event (Live Activity state, same route)::
@@ -122,8 +123,9 @@ def preview(*, title: Any, body: Any, profile: str, subtitle: Any = "", request_
             bot_name: Any = "", markdown: bool = True) -> dict[str, str]:
     """The sealed banner content. iOS banners render plain text, so the subtitle and body are
     flattened from markdown before sealing; ``markdown=False`` leaves text that is not markdown,
-    like a shell command, unflattened. The title (the bot's name and a fixed label) and the bot's
-    name are never markdown, and an empty name is left out."""
+    like a shell command, unflattened. The title (a chat or job name, or a fixed label, with a
+    non-default Profile's name in front) and the bot's name are never markdown, and an empty name
+    is left out."""
     content = {
         "title": _clip(title, TITLE_CHARS, markdown=False),
         "subtitle": _clip(subtitle, SUBTITLE_CHARS, markdown=markdown),

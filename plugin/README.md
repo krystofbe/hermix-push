@@ -111,7 +111,7 @@ Notification (`kind` is `reply`, `approval`, `clarify`, `turn_error` or `deliver
 install_key>`. The title says what it is about: a reply is titled by the chat's title (read with
 `SessionDB.get_session_title`; empty while the chat has none, never the user's own message), a
 delivery by the job name; approvals, questions and failures by `Approval needed`, `Question`,
-`Turn failed` with the chat's title as subtitle. The default Profile never adds its name. Any other
+`Turn failed`; an approval's subtitle is the command's description, the others carry the chat's title. The default Profile never adds its name. Any other
 Profile puts `bot_name` (its Desktop title, then `display_name`, then the slug, read from the host's
 `profile.yaml` for each banner, clipped to 80 characters) in front of the title; the field is
 only present then. Hermex shows the labels in the phone's language from `kind`.

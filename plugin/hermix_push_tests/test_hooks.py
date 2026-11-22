@@ -210,20 +210,200 @@ def test_default_profile_reply_is_titled_by_the_chat_and_actions_by_label(keys, 
               for e in notifications(sender)}
     assert {k: (v["title"], v["subtitle"], v.get("bot_name")) for k, v in sealed.items()} == {
         "reply": ("Steuern 2025", "", None),
-        "approval": ("Approval needed", "Steuern 2025", None),
+        "approval": ("Approval needed", "Delete x", None),
         "clarify": ("Question", "Steuern 2025", None),
     }
 
 
-def test_approval_subtitle_falls_back_to_the_description_without_a_chat_title(keys, sender):
-    p = HermexPush(profile="default", sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
-                   schedule=lambda d, f: None, title_lookup=lambda sid: "")
-    p.pre_llm_call(session_id="s", platform="desktop")
-    p.pre_approval_request(command="rm x", description="Delete x", session_id="s", surface="cli", request_id="r")
+def test_approval_subtitle_is_the_description_and_falls_back_to_the_chat_title(keys, sender):
+    for chat, expected in (("", "Delete x"), ("Steuern 2025", "Delete x")):
+        sender.events.clear()
+        p = HermexPush(profile="default", sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
+                       schedule=lambda d, f: None, title_lookup=lambda sid: chat)
+        p.pre_llm_call(session_id="s", platform="desktop")
+        p.pre_approval_request(command="rm x", description="Delete x", session_id="s", surface="cli", request_id="r")
+        inner = unseal(notifications(sender)[0]["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
+        assert inner["title"] == "Approval needed" and inner["subtitle"] == expected
+    sender.events.clear()
+    p.pre_approval_request(command="rm x", description="", session_id="s", surface="cli", request_id="r2")
     inner = unseal(notifications(sender)[0]["sealed"], preview_key=keys.preview_key, install_key=keys.install_key)
-    assert inner["title"] == "Approval needed" and inner["subtitle"] == "Delete x"
+    assert inner["subtitle"] == "Steuern 2025"
 
 
 def test_session_title_is_empty_without_the_host_store():
     from hermix_push.hooks import session_title
     assert session_title("") == "" and session_title("x") == ""
+
+
+def test_session_title_opens_the_store_read_only_and_always_closes_it(monkeypatch):
+    from hermix_push.hooks import session_title
+    calls = []
+
+    class FakeDB:
+        def __init__(self, **kw):
+            calls.append(("open", kw))
+
+        def get_session_title(self, sid):
+            calls.append(("get", sid))
+            if sid == "boom":
+                raise RuntimeError("x")
+            return "  Steuern  "
+
+        def close(self):
+            calls.append(("close",))
+
+    module = types.ModuleType("hermes_state")
+    module.SessionDB = FakeDB
+    monkeypatch.setitem(sys.modules, "hermes_state", module)
+    assert session_title("s1") == "Steuern"
+    assert session_title("boom") == ""
+    assert calls[0] == ("open", {"read_only": True})
+    assert calls.count(("close",)) == 2
+
+
+def test_scheduler_failure_does_not_wedge_flushing(keys, sender):
+    calls = {"n": 0}
+
+    def schedule(delay, fn):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("no loop")
+    p = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r", schedule=schedule)
+    p.pre_llm_call(session_id="s", platform="desktop")
+    p.pre_tool_call(tool_name="terminal", args={}, session_id="s")  # held; scheduling fails
+    p.post_tool_call(tool_name="terminal", session_id="s")  # held again; scheduling retried
+    assert calls["n"] == 2
+
+
+def test_close_stops_the_relay_thread():
+    from hermix_push.relay import RelaySender
+    sender = RelaySender(post=lambda u, b: (200, "accepted"))
+    p = HermexPush(sender=sender, keys_loader=lambda: None, relay_url=lambda: "", schedule=lambda d, f: None)
+    sender.enqueue("https://r/installs/k/notify", {"kind": "reply"})
+    sender.wait_idle()
+    p.close()
+    assert not sender._thread.is_alive()
+
+
+def test_smart_approvals_do_not_push(push, sender):
+    push.pre_approval_request(command="ls", description="", session_key="s", surface="smart")
+    assert sender.events == []
+
+
+def test_subagent_sessions_are_flagged(push, sender):
+    push.subagent_start(parent_session_id="p", child_session_id="child-1")
+    run_turn(push, session_id="child-1")
+    assert notifications(sender)[0]["is_subagent"] is True
+
+
+def test_routine_tool_progress_is_coalesced_then_flushed(keys, sender):
+    clock, delays = {"now": 1000.0}, []
+    push = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
+                      now=lambda: clock["now"], schedule=lambda delay, fn: delays.append(delay))
+    push.pre_llm_call(session_id="s", platform="desktop")
+    clock["now"] += 3
+    push.pre_tool_call(tool_name="terminal", args={"command": "secret"}, session_id="s")
+    push.post_tool_call(tool_name="terminal", session_id="s")
+    assert len(sender.events) == 1  # only the turn start went through
+    assert delays == [2.0]  # one flush, when the turn start's five-second hold ends
+    clock["now"] += 2
+    push.flush_progress()
+    assert len(sender.events) == 2
+    last = sender.events[-1][1]
+    assert last["tool_calls"] == 1 and "secret" not in str(last)
+
+
+def test_nothing_is_sent_without_a_relay_url_or_keys(keys, sender):
+    p = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "", schedule=lambda d, f: None)
+    run_turn(p)
+    assert sender.events == []
+
+    def broken():
+        raise OSError("no home")
+    p = HermexPush(sender=sender, keys_loader=broken, relay_url=lambda: "https://r", schedule=lambda d, f: None)
+    run_turn(p)
+    assert sender.events == []
+
+
+def test_profile_without_its_own_relay_url_inherits_the_root_dotenv(hermes_home, monkeypatch):
+    from hermix_push.hooks import relay_url_from_env
+    (hermes_home / ".env").write_text("OTHER=1\nHERMIX_PUSH_RELAY_URL=https://root.test/\n")
+    profile = hermes_home / "profiles" / "dev"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("HERMES_HOME", str(profile))
+    assert relay_url_from_env() == "https://root.test/"
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://env.test")
+    assert relay_url_from_env() == "https://env.test"
+
+
+def test_the_pre_fork_relay_url_variable_is_still_read_but_the_new_one_wins(hermes_home, monkeypatch):
+    from hermix_push.hooks import relay_url_from_env
+    (hermes_home / ".env").write_text("HERMEX_PUSH_RELAY_URL=https://old-dotenv.test\n")
+    assert relay_url_from_env() == "https://old-dotenv.test"
+    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://old-env.test")
+    assert relay_url_from_env() == "https://old-env.test"
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://new.test")
+    assert relay_url_from_env() == "https://new.test"
+
+
+def test_relay_url_from_env_refuses_cleartext_to_remote_hosts(monkeypatch):
+    from hermix_push.hooks import relay_url_from_env
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "http://relay.example")
+    assert relay_url_from_env() == ""
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.example")
+    assert relay_url_from_env() == "https://relay.example"
+
+
+def test_a_session_whose_hold_ends_first_is_not_kept_waiting_by_another(keys, sender):
+    clock, delays = {"now": 1000.0}, []
+    push = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
+                      now=lambda: clock["now"], schedule=lambda delay, fn: delays.append(delay))
+    push.pre_llm_call(session_id="b", platform="desktop")
+    clock["now"] = 1002.0
+    push.pre_llm_call(session_id="a", platform="desktop")
+    clock["now"] = 1003.0
+    push.pre_tool_call(tool_name="terminal", session_id="a")  # held until 1007
+    clock["now"] = 1003.5
+    push.pre_tool_call(tool_name="terminal", session_id="b")  # held until 1005
+    assert delays == [4.0, 1.5]
+    clock["now"] = 1005.0
+    push.flush_progress()
+    assert [e["session_id"] for _, e in sender.events] == ["b", "a", "b"]
+    assert delays == [4.0, 1.5, 2.0]  # re-armed for a's hold
+
+
+def test_an_unwatched_turn_sends_routine_progress_once_a_minute_after_the_grace(keys, sender):
+    clock = {"now": 1000.0}
+    push = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
+                      now=lambda: clock["now"], schedule=lambda delay, fn: None)
+    sender.result = "no_activity"  # no phone shows a Live Activity for this session
+    push.pre_llm_call(session_id="s", platform="cli")
+    for second in range(1, 170):  # a tool boundary every second
+        clock["now"] = 1000.0 + second
+        push.pre_tool_call(tool_name="terminal", session_id="s")
+    push.pre_approval_request(command="ls", description="", session_id="s", surface="cli", request_id="r")
+    progress = [(e["sent_at"] - 1000, e["status"]) for _, e in sender.events if e["kind"] == "progress"]
+    # Five-second cadence through the 30 s grace, then one routine update a minute; waiting goes out at once.
+    assert progress == [(t, "running") for t in (0, 5, 10, 15, 20, 25, 30, 90, 150)] + [(169, "waiting")]
+    assert [e["kind"] for e in notifications(sender)] == ["approval"]
+
+
+def test_a_status_change_probes_and_a_watched_answer_restores_the_cadence(keys, sender):
+    clock = {"now": 1000.0}
+    push = HermexPush(sender=sender, keys_loader=lambda: keys, relay_url=lambda: "https://r",
+                      now=lambda: clock["now"], schedule=lambda delay, fn: None)
+    sender.result = "no_activity"
+    push.pre_llm_call(session_id="s", platform="desktop")
+    clock["now"] = 1030.0
+    push.pre_tool_call(tool_name="terminal", session_id="s")  # quiet until 1090
+    clock["now"] = 1040.0
+    push.pre_tool_call(tool_name="read_file", session_id="s")  # held
+    sender.result = "accepted"  # the phone has registered its activity
+    clock["now"] = 1041.0
+    push.pre_approval_request(command="ls", description="", session_id="s", surface="cli", request_id="r")
+    clock["now"] = 1042.0
+    push.post_approval_response(session_id="s")
+    clock["now"] = 1047.0
+    push.pre_tool_call(tool_name="search", session_id="s")  # five seconds after the last send
+    progress = [(e["sent_at"] - 1000, e["status"]) for _, e in sender.events if e["kind"] == "progress"]
+    assert progress == [(0, "running"), (30, "running"), (41, "waiting"), (42, "running"), (47, "running")]
