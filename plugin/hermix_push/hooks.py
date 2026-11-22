@@ -40,9 +40,10 @@ HOOK_NAMES = (
 )
 MAX_TRACKED_SESSIONS = 4096
 RELAY_URL_CACHE_SECONDS = 5.0
-# The English label after the bot's name in each sealed title; a reply is titled by the name
-# alone. Hermex builds the same title in the phone's language from ``kind`` and ``bot_name``, so
-# this English copy only shows on app builds that predate ``bot_name``.
+# The English title of the kinds that need the user to act; replies and deliveries are titled by
+# their content (chat title, job name). The app shows the same label in the phone's language, so
+# this English copy only shows on app builds that predate that. A non-default Profile's banners
+# get its name in front.
 TITLE_LABELS = {"approval": "Approval needed", "clarify": "Question", "turn_error": "Turn failed"}
 
 
@@ -79,6 +80,23 @@ def relay_url_from_env() -> str:
         if value:
             return value
     return ""
+
+
+def session_title(session_id: str) -> str:
+    """The chat's title from Hermes' session store (``SessionDB.get_session_title``, the call the
+    host itself uses for the status bar and other plugins use for chat names). Empty when the
+    chat has no title yet, the id is unknown or the store is unavailable; never the user's text."""
+    if not session_id:
+        return ""
+    try:
+        from hermes_state import SessionDB
+        db = SessionDB()
+        try:
+            return str(db.get_session_title(session_id) or "").strip()
+        finally:
+            db.close()
+    except Exception:
+        return ""
 
 
 def bot_name_for(profile: str) -> str:
@@ -168,7 +186,9 @@ class HermexPush:
         relay_url: Callable[[], str] = relay_url_from_env, now: Callable[[], float] = time.time,
         schedule: Optional[Callable[[float, Callable[[], None]], Any]] = None,
         bot_name: Optional[Callable[[], str]] = None,
+        title_lookup: Callable[[str], str] = session_title,
     ) -> None:
+        self._title_lookup = title_lookup
         self._profile = "" if profile == "default" else profile
         self._bot_name = bot_name or (lambda: bot_name_for(self._profile))
         self._sender = sender or RelaySender()
@@ -238,19 +258,30 @@ class HermexPush:
         platform = self._platform_by_session.get(session_id, "")
         return platform, coarse_source(platform), session_id in self._subagent_sessions
 
+    def _titled(self, title: str) -> tuple[str, str]:
+        """``(banner title, bot_name)``. The default Profile adds nothing to the title; any other
+        Profile puts its name in front (or alone) and sends it as ``bot_name``."""
+        if not self._profile:
+            return title, ""
+        name = self._bot_name() or self._profile
+        return (f"{name} \u00b7 {title}" if title else name), name
+
     def _notify(self, kind: str, session_id: str, event_ref: str, **content: Any) -> None:
-        """Seal one banner. ``content`` is the ``preview`` fields besides the title, which is
-        the bot's name and the kind's label; the name is only read when a banner goes out."""
+        """Seal one banner. ``content`` is the ``preview`` fields besides the title: replies are
+        titled by the chat's title, the kinds in ``TITLE_LABELS`` by their label with the chat's
+        title as subtitle (unless the caller gave one and the chat has none)."""
         platform, source, is_subagent = self._session(session_id)
         if not should_notify(session_id, platform):
             return
         keys = self._keys_or_none()
         if keys is None:
             return
-        name = self._bot_name() or self._profile or "Hermes"
+        chat = self._title_lookup(session_id)
         label = TITLE_LABELS.get(kind)
-        sealed = preview(title=f"{name} · {label}" if label else name, bot_name=name,
-                         profile=self._profile, **content)
+        if label:
+            content["subtitle"] = chat or content.get("subtitle", "")
+        title, name = self._titled(label or chat)
+        sealed = preview(title=title, bot_name=name, profile=self._profile, **content)
         self._send(notify_event(
             kind=kind, session_id=session_id, event_ref=event_ref, source=source, is_subagent=is_subagent,
             keys=keys, preview=sealed, now=self._now(),
@@ -267,9 +298,8 @@ class HermexPush:
             return False, f"hermix: {RELAY_URL_ENV} not set or keys unavailable"
         job_name, body = parse_delivery(content)
         cron_name, execution_id = _current_cron()
-        name = self._bot_name() or self._profile or "Hermes"
-        sealed = preview(title=f"{name} \u00b7 Scheduled task", subtitle=job_name or cron_name, body=body,
-                         profile=self._profile, bot_name=name)
+        title, name = self._titled(job_name or cron_name)  # no job (send_message): no title
+        sealed = preview(title=title, body=body, profile=self._profile, bot_name=name)
         # A cron retry repeats the execution id and content, so the relay deduplicates it; a plain
         # send_message is always a new event.
         ref = hashlib.sha256(f"{execution_id}\n{chat_id}\n{content}".encode()).hexdigest()[:32] if execution_id \
@@ -406,7 +436,7 @@ class HermexPush:
                              body=turn_exit_reason or "The agent stopped without finishing.")
             elif completed and captured is not None:
                 user_message, reply = captured
-                self._notify("reply", session_id, ref, subtitle=user_message, body=reply)
+                self._notify("reply", session_id, ref, body=reply)
         except Exception:
             logger.warning("hermix-push: on_session_end failed; a push was dropped", exc_info=True)
 

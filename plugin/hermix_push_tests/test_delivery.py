@@ -69,8 +69,10 @@ def test_delivery_is_sealed_time_sensitive_ready_and_never_collapses(keys):
     assert url == "https://relay.test/installs/" + keys.install_key + "/notify"
     assert first["kind"] == "delivery" and first["session_id"] == "home" and first["source"] == "other"
     assert first["collapse_id"] == first["event_id"] != second["event_id"]
-    assert sealed(first, keys) == {"title": "Hermes · Scheduled task", "subtitle": "Flachwitz", "body": "Warum der Witz?",
-                                   "profile": "", "request_id": "", "bot_name": "Hermes"}
+    assert sealed(first, keys) == {"title": "Flachwitz", "subtitle": "", "body": "Warum der Witz?",
+                                   "profile": "", "request_id": ""}
+    push.deliver_message("home", "Test")  # send_message without a job: no title
+    assert sealed(relay.posts[-1][1], keys)["title"] == ""
     assert "Witz" not in json.dumps(first)
 
 
@@ -86,7 +88,7 @@ def test_a_cron_retry_keeps_its_event_id_and_a_plain_send_does_not(keys, monkeyp
     push.deliver_message("sess-1", "plain body")
     (_, a), (_, b) = relay.posts
     assert a["event_id"] == b["event_id"]
-    assert sealed(a, keys)["subtitle"] == "Daily"  # unwrapped jobs fall back to the executing job's name
+    assert sealed(a, keys)["title"] == "Daily"  # unwrapped jobs fall back to the executing job's name
     monkeypatch.setitem(sys.modules, "cron.execution_identity", types.ModuleType("empty"))  # no execution bound
     push.deliver_message("sess-1", "plain body")
     assert relay.posts[-1][1]["event_id"] != a["event_id"]
@@ -156,3 +158,11 @@ def test_git_push_is_not_a_push_request(keys):
         assert push.pre_llm_call(session_id="s1", platform="ios", user_message=text) is None, text
     for text in ["Erinnere mich in 5 Minuten", "schick mir eine Push-Nachricht", "send me a push"]:
         assert push.pre_llm_call(session_id="s1", platform="ios", user_message=text), text
+
+
+def test_a_non_default_profile_puts_its_name_in_front_of_the_job_name(keys):
+    relay = FakeRelay((200, "accepted"))
+    push = make_push(keys, relay, profile="ada")
+    push.deliver_message("home", WRAPPED)
+    inner = sealed(relay.posts[-1][1], keys)
+    assert inner["title"] == "Hermes \u00b7 Flachwitz" and inner["bot_name"] == "Hermes" and inner["profile"] == "ada"

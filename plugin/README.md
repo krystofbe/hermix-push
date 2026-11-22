@@ -29,8 +29,8 @@ user configuration is needed.
   only when the time itself matters (set-time reminders, deadlines, explicit urgency), never reports or digests.
   `send_message` needs the explicit target `hermix:home` or `hermix:<session_id>`: the plugin sets no home channel on purpose, because Hermes sends its system notices (gateway restarted, shutdown) to a platform's home channel and that would push the phone on every restart. Valid refs are `home` and
   `[A-Za-z0-9_.-]{1,200}`; anything else is refused.
-- The banner is a sealed `delivery` event (title "`<bot>` · Scheduled task", subtitle the cron job's
-  name, body the message, 400 characters). The cron wrapper ("Cronjob Response: ...") is parsed off;
+- The banner is a sealed `delivery` event (title the cron job's name, empty for a plain
+  `send_message`, no subtitle, body the message, 400 characters). The cron wrapper ("Cronjob Response: ...") is parsed off;
   the job name falls back to the running cron execution. `collapse_id` is per event, so reminders never
   replace each other. A cron retry keeps its `event_id` (execution id, target, content) and is
   deduplicated by the relay; a plain `send_message` is always a new event.
@@ -108,14 +108,16 @@ Notification (`kind` is `reply`, `approval`, `clarify`, `turn_error` or `deliver
 
 `sealed` is base64 of `nonce(12) || AES-256-GCM ciphertext || tag(16)` over the UTF-8 JSON
 `{"title","subtitle","body","profile","request_id","bot_name"}`, AAD `hermex-preview-v1:<sha256 hex of
-install_key>`. `bot_name` is the name Hermex's bot roster shows (the Desktop title, then
-`display_name`, then the Profile, with the default Profile as "Hermes"), read from the host's
-`profile.yaml` for each banner and clipped to 80 characters. Hermex builds the banner title from it
-and `kind` in the phone's language; `title` carries the same in English (`<name> · Approval
-needed`, `· Question`, `· Turn failed`, the name alone for a reply) for older app builds.
+install_key>`. The title says what it is about: a reply is titled by the chat's title (read with
+`SessionDB.get_session_title`; empty while the chat has none, never the user's own message), a
+delivery by the job name; approvals, questions and failures by `Approval needed`, `Question`,
+`Turn failed` with the chat's title as subtitle. The default Profile never adds its name. Any other
+Profile puts `bot_name` (its Desktop title, then `display_name`, then the slug, read from the host's
+`profile.yaml` for each banner, clipped to 80 characters) in front of the title; the field is
+only present then. Hermex shows the labels in the phone's language from `kind`.
 Banners render no markdown, so subtitle and body are flattened to plain text before title,
 subtitle and body are clipped to 80, 120 and 400 characters. The title is never flattened,
-because it is the bot's name and a fixed label; neither is an approval banner, because its body
+because it is a chat or job name or a fixed label; neither is an approval banner, because its body
 is a shell command.
 A `null` seal means encryption failed on the host; the phone shows a generic
 banner. `event_id` is stable per turn or request for relay dedupe; `thread_id` and
