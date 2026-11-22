@@ -44,7 +44,7 @@ def serve_every_profile(
         if getattr(manager_class, _MARK, None) is not None:
             return None
         if not all(callable(getattr(manager_class, name, None)) for name in (*_WRAPPED, "iter_hook_callbacks")):
-            logger.warning("hermex-push: this hermes-agent cannot share one install across profiles; "
+            logger.warning("hermix-push: this hermes-agent cannot share one install across profiles; "
                            "install the plugin in each profile that should push")
             return None
         own = {name: manager_class.__dict__.get(name) for name in _WRAPPED}
@@ -62,9 +62,11 @@ def serve_every_profile(
             results = invoke(self, hook_name, **kwargs)
             try:
                 if hook_name in HOOK_NAMES and not _has_own_copy(self, hook_name):
-                    getattr(push_for_active_profile(), hook_name)(**kwargs)
+                    answer = getattr(push_for_active_profile(), hook_name)(**kwargs)
+                    if answer is not None:  # ``pre_llm_call`` context reaches the host like any plugin's
+                        results = [*(results or []), answer]
             except Exception:
-                logger.warning("hermex-push: serving %s for a profile without its own copy failed",
+                logger.warning("hermix-push: serving %s for a profile without its own copy failed",
                                hook_name, exc_info=True)
             return results
 

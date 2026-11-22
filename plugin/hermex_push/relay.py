@@ -89,7 +89,7 @@ class RelaySender:
         try:
             self._queue.put_nowait((url, event, on_result))
         except queue.Full:
-            logger.warning("hermex-push: relay queue full; dropping a %s event", event.get("kind"))
+            logger.warning("hermix-push: relay queue full; dropping a %s event", event.get("kind"))
             return False
         self._ensure_thread()
         return True
@@ -119,7 +119,7 @@ class RelaySender:
             try:
                 self.deliver(url, event, on_result)
             except Exception:
-                logger.debug("hermex-push: relay delivery raised", exc_info=True)
+                logger.debug("hermix-push: relay delivery raised", exc_info=True)
             finally:
                 self._queue.task_done()
 
@@ -144,11 +144,11 @@ class RelaySender:
                     on_result(result)
                 return True
             if status and status < 500:
-                logger.warning("hermex-push: relay rejected a %s event (%s)", event.get("kind"), reason)
+                logger.warning("hermix-push: relay rejected a %s event (%s)", event.get("kind"), reason)
                 return False
             if attempt < attempts:
                 self._sleep(RETRY_DELAY_SECONDS)
-        logger.warning("hermex-push: relay unreachable for a %s event (%s)", event.get("kind"), reason)
+        logger.warning("hermix-push: relay unreachable for a %s event (%s)", event.get("kind"), reason)
         return False
 
     def wait_idle(self, timeout: float = 5.0) -> None:

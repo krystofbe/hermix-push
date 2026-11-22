@@ -12,16 +12,19 @@ never be pushed to the phone by mistake.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from typing import Any, Callable, Optional
 
-from . import RELAY_URL_ENV
+from . import LEGACY_RELAY_URL_ENV, RELAY_URL_ENV
 from .keys import Keys, hermes_root, load_or_create_keys
-from .payload import notify_event, preview, progress_event
+from .payload import _as_text, notify_event, preview, progress_event
 from .privacy import keyed_id
 from .progress import ProgressCoalescer, ProgressSnapshot
 from .relay import RelaySender, ResultFn, allowed_relay_url, notify_url
@@ -57,22 +60,25 @@ def _root_dotenv_value(key: str) -> str:
 
 
 def relay_url_from_env() -> str:
-    """``HERMEX_PUSH_RELAY_URL`` resolved the way hermes-agent resolves any managed credential:
+    """``HERMIX_PUSH_RELAY_URL`` (or, as a fallback, the pre-fork ``HERMEX_PUSH_RELAY_URL``) resolved the way hermes-agent resolves any managed credential:
     the active profile scope, then the process environment, then the active home's ``.env``
     (the step hosts such as hermes-webui need, since they never export the Hermes ``.env``).
     A profile without its own value falls back to the root ``.env``. Anything but https (or
     plain http to loopback, for local capture) is refused so the install key never travels in
     the clear."""
-    try:
-        from hermes_cli.config import get_env_value
-        value = get_env_value(RELAY_URL_ENV)
-    except Exception:
-        value = os.environ.get(RELAY_URL_ENV, "")
-    value = (value or "").strip() or _root_dotenv_value(RELAY_URL_ENV)
-    if value and not allowed_relay_url(value):
-        logger.warning("hermex-push: refusing %s=%r (https required, http only to loopback)", RELAY_URL_ENV, value)
-        return ""
-    return value
+    for name in (RELAY_URL_ENV, LEGACY_RELAY_URL_ENV):
+        try:
+            from hermes_cli.config import get_env_value
+            value = get_env_value(name)
+        except Exception:
+            value = os.environ.get(name, "")
+        value = (value or "").strip() or _root_dotenv_value(name)
+        if value and not allowed_relay_url(value):
+            logger.warning("hermix-push: refusing %s=%r (https required, http only to loopback)", name, value)
+            return ""
+        if value:
+            return value
+    return ""
 
 
 def bot_name_for(profile: str) -> str:
@@ -89,6 +95,38 @@ def bot_name_for(profile: str) -> str:
         return next((name for name in names if name), fallback)
     except Exception:
         return fallback
+
+
+# What the cron scheduler wraps around a job's reply (``cron.wrap_response``), see
+# cron/scheduler_delivery.py; send_message and unwrapped jobs arrive as the plain body.
+_CRON_HEADER = re.compile(r"^Cronjob Response:\s*(?P<name>.+?)\s*\n\(job_id:[^)]*\)\s*\n-+\s*\n+(?P<body>.*)$", re.S)
+_CRON_FOOTER = re.compile(r"\n+To stop or manage this job, send me a new message.*\Z", re.S)
+# A user message that asks for a push or a timer; the agent then gets the delivery note (``pre_llm_call``).
+PUSH_INTENT = re.compile(r"push|notif|benachricht|erinner|remind|wecker|alarm", re.I)
+
+
+def parse_delivery(message: str) -> tuple[str, str]:
+    """``(job name, body)`` of a cron delivery; the name is empty for a plain message."""
+    match = _CRON_HEADER.match(message or "")
+    name, body = (match["name"].strip(), match["body"]) if match else ("", message or "")
+    return name, _CRON_FOOTER.sub("", body).strip()
+
+
+def _current_cron() -> tuple[str, str]:
+    """``(job name, execution id)`` while a cron job fires, else empty strings."""
+    try:
+        from cron.execution_identity import current_cron_execution
+        execution = current_cron_execution()
+        return (execution.job_name, execution.execution_id) if execution else ("", "")
+    except Exception:
+        return "", ""
+
+
+def delivery_note(session_id: str) -> str:
+    return (
+        f"Hermix push: to notify the user on their iPhone now or later, use cronjob_manage deliver='hermix:{session_id}' "
+        "(tap opens this chat) or 'hermix'; send_message target 'hermix'. deliver='origin' from this chat does not push."
+    )
 
 
 class _Recent(OrderedDict):
@@ -170,7 +208,7 @@ class HermexPush:
             try:
                 self._keys = self._keys_loader()
             except Exception:
-                logger.warning("hermex-push: keys unavailable; nothing will be sent", exc_info=True)
+                logger.warning("hermix-push: keys unavailable; nothing will be sent", exc_info=True)
         return self._keys
 
     def _relay(self) -> str:
@@ -188,7 +226,7 @@ class HermexPush:
         url = self._relay()
         keys = self._keys_or_none()
         if not url or keys is None or self._closed:
-            logger.debug("hermex-push: relay not configured; dropping a %s event", event.get("kind"))
+            logger.debug("hermix-push: relay not configured; dropping a %s event", event.get("kind"))
             return False
         return self._sender.enqueue(notify_url(url, keys.install_key), event, on_result)
 
@@ -213,6 +251,36 @@ class HermexPush:
             kind=kind, session_id=session_id, event_ref=event_ref, source=source, is_subagent=is_subagent,
             keys=keys, preview=sealed, now=self._now(),
         ))
+
+    # -- delivery (cron ``deliver: hermix``, send_message) ---------------------------------
+
+    def deliver_message(self, chat_id: str, content: str) -> tuple[bool, str]:
+        """Send one scheduled or requested message to every paired phone and wait for the relay's
+        answer: ``(True, event_id)`` or ``(False, reason)``. ``chat_id`` is ``home`` (a tap opens
+        the app) or a session id (a tap opens that chat). Never logs the content."""
+        url, keys = self._relay(), self._keys_or_none()
+        if not url or keys is None:
+            return False, f"hermix: {RELAY_URL_ENV} not set or keys unavailable"
+        job_name, body = parse_delivery(content)
+        cron_name, execution_id = _current_cron()
+        name = self._bot_name() or self._profile or "Hermes"
+        sealed = preview(title=f"{name} \u00b7 Scheduled task", subtitle=job_name or cron_name, body=body,
+                         profile=self._profile, bot_name=name)
+        # A cron retry repeats the execution id and content, so the relay deduplicates it; a plain
+        # send_message is always a new event.
+        ref = hashlib.sha256(f"{execution_id}\n{chat_id}\n{content}".encode()).hexdigest()[:32] if execution_id \
+            else uuid.uuid4().hex
+        event = notify_event(kind="delivery", session_id=chat_id, event_ref=ref, source="other",
+                             is_subagent=False, keys=keys, preview=sealed, now=self._now())
+        answers: list[str] = []
+        if not self._sender.deliver(notify_url(url, keys.install_key), event, answers.append):
+            return False, "hermix: relay rejected or unreachable"
+        result = answers[0] if answers else ""
+        if result in ("accepted", "deduplicated"):
+            return True, event["event_id"]
+        reasons = {"ignored": "hermix: relay does not know kind 'delivery', update the relay",
+                   "no_devices": "hermix: no paired iPhone"}
+        return False, reasons.get(result, "hermix: relay answered unexpectedly")
 
     # -- progress -------------------------------------------------------------------------
 
@@ -264,7 +332,7 @@ class HermexPush:
         except Exception:
             with self._lock:
                 self._flush_at = None
-            logger.debug("hermex-push: could not schedule a progress flush", exc_info=True)
+            logger.debug("hermix-push: could not schedule a progress flush", exc_info=True)
             return
         with self._lock:
             self._flush_timer = timer if isinstance(timer, threading.Timer) else None
@@ -287,18 +355,26 @@ class HermexPush:
             self._platform_by_session.remember(session_id, platform)
         return first_sight and bool(platform)
 
-    def pre_llm_call(self, *, session_id: str = "", platform: str = "", **_: Any) -> None:
+    def pre_llm_call(self, *, session_id: str = "", platform: str = "", user_message: Any = "",
+                     is_first_turn: bool = False, **_: Any) -> Optional[dict[str, str]]:
+        """Records the turn; returns the delivery note (hermes appends it to the user message) on a
+        phone-facing session's first turn or when the user mentions pushes or timers."""
         try:
             with self._lock:
                 first_sight = self._remember_platform(session_id, platform)
                 self._reply_by_session.pop(session_id, None)
                 snapshot = self._progress.turn_started(session_id, self._now())
             if first_sight:  # ids and platform only, never content
-                logger.info("hermex-push: session %s platform=%r source=%s", session_id, platform,
+                logger.info("hermix-push: session %s platform=%r source=%s", session_id, platform,
                             coarse_source(platform))
             self._emit_progress(snapshot)
+            if should_notify(session_id, platform) and (
+                is_first_turn or PUSH_INTENT.search(_as_text(user_message))
+            ):
+                return {"context": delivery_note(session_id)}
         except Exception:
-            logger.warning("hermex-push: pre_llm_call failed", exc_info=True)
+            logger.warning("hermix-push: pre_llm_call failed", exc_info=True)
+        return None
 
     def post_llm_call(self, *, session_id: str = "", user_message: Any = "", assistant_response: Any = "",
                       platform: str = "", **_: Any) -> None:
@@ -307,7 +383,7 @@ class HermexPush:
                 self._remember_platform(session_id, platform)
                 self._reply_by_session.remember(session_id, (user_message, assistant_response))
         except Exception:
-            logger.warning("hermex-push: post_llm_call failed", exc_info=True)
+            logger.warning("hermix-push: post_llm_call failed", exc_info=True)
 
     def on_session_end(self, *, session_id: str = "", completed: bool = False, interrupted: bool = False,
                        failed: bool = False, turn_id: str = "", turn_exit_reason: str = "",
@@ -328,7 +404,7 @@ class HermexPush:
                 user_message, reply = captured
                 self._notify("reply", session_id, ref, subtitle=user_message, body=reply)
         except Exception:
-            logger.warning("hermex-push: on_session_end failed; a push was dropped", exc_info=True)
+            logger.warning("hermix-push: on_session_end failed; a push was dropped", exc_info=True)
 
     def pre_tool_call(self, *, tool_name: str = "", args: Optional[dict[str, Any]] = None, session_id: str = "",
                       tool_call_id: str = "", **_: Any) -> None:
@@ -345,7 +421,7 @@ class HermexPush:
                 snapshot = self._progress.tool_started(session_id, tool_name, now)
             self._emit_progress(snapshot)
         except Exception:
-            logger.warning("hermex-push: pre_tool_call failed", exc_info=True)
+            logger.warning("hermix-push: pre_tool_call failed", exc_info=True)
 
     def post_tool_call(self, *, tool_name: str = "", session_id: str = "", **_: Any) -> None:
         try:
@@ -356,7 +432,7 @@ class HermexPush:
                     snapshot = self._progress.tool_finished(session_id, self._now())
             self._emit_progress(snapshot)
         except Exception:
-            logger.warning("hermex-push: post_tool_call failed", exc_info=True)
+            logger.warning("hermix-push: post_tool_call failed", exc_info=True)
 
     def _approval_session(self, session_id: str, session_key: str) -> str:
         """The agent session id when the host bound one, else an opaque id derived from the
@@ -384,7 +460,7 @@ class HermexPush:
             self._notify("approval", sid, ref, subtitle=description, body=command, request_id=request_id,
                          markdown=False)
         except Exception:
-            logger.warning("hermex-push: pre_approval_request failed", exc_info=True)
+            logger.warning("hermix-push: pre_approval_request failed", exc_info=True)
 
     def post_approval_response(self, *, session_key: str = "", session_id: str = "", **_: Any) -> None:
         try:
@@ -392,9 +468,27 @@ class HermexPush:
                 snapshot = self._progress.resumed(self._approval_session(session_id, session_key), self._now())
             self._emit_progress(snapshot)
         except Exception:
-            logger.warning("hermex-push: post_approval_response failed", exc_info=True)
+            logger.warning("hermix-push: post_approval_response failed", exc_info=True)
 
     def subagent_start(self, *, child_session_id: Optional[str] = None, **_: Any) -> None:
         if child_session_id:
             with self._lock:
                 self._subagent_sessions.remember(child_session_id, True)
+
+
+_shared: dict[str, HermexPush] = {}
+_shared_lock = threading.Lock()
+
+
+def shared_push() -> HermexPush:
+    """The instance that sends deliveries for the active profile (adapter and standalone sender).
+    It never receives hooks, so it holds no session state."""
+    try:
+        from hermes_cli.profiles import get_active_profile_name
+        profile = get_active_profile_name() or ""
+    except Exception:
+        profile = ""
+    with _shared_lock:
+        if profile not in _shared:
+            _shared[profile] = HermexPush(profile=profile)
+        return _shared[profile]

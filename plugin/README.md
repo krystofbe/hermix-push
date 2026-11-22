@@ -1,12 +1,44 @@
-# hermex-push plugin
+# hermix-push plugin
 
-A `hermes-agent` platform plugin (`hermex`) that posts sealed events to a hermex-push relay on
-each turn boundary. Design: [hermex#490](https://github.com/uzairansaruzi/hermex/issues/490).
+A `hermes-agent` platform plugin (`hermix`, plugin name `hermix-push`) that posts sealed events to a
+hermix-push relay on each turn boundary and delivers cron / `send_message` output as pushes. Design: [hermex#490](https://github.com/uzairansaruzi/hermex/issues/490).
 Slice: [hermex#555](https://github.com/uzairansaruzi/hermex/issues/555).
 
-Install identifier the app sends: `https://github.com/uzairansaruzi/hermex-push.git/plugin`
+Install identifier the app sends: `https://github.com/krystofbe/hermix-push.git/plugin`
 (hermes-agent splits it at `.git/` into the clone URL and the `plugin` subdirectory). Enable
-with `hermes plugins enable hermex-push`, set `HERMEX_PUSH_RELAY_URL`, restart the gateway.
+with `hermes plugins enable hermix-push`, set `HERMIX_PUSH_RELAY_URL`, restart the gateway.
+
+**Coming from the pre-fork `hermex-push` (0.7.x):** `HERMEX_PUSH_RELAY_URL` is still read when
+`HERMIX_PUSH_RELAY_URL` is unset, and the first use copies a complete key pair from
+`plugin-data/hermex-push/` to `plugin-data/hermix-push/` (never over existing keys, nothing is
+deleted or logged), so paired phones stay paired. Do not run both plugins side by side: remove
+`hermex-push` first.
+
+## Delivery: `deliver: hermix`
+
+The plugin registers the `hermix` platform with a cron home chat (`HERMIX_HOME_CHANNEL`, default
+`home`, set with `os.environ.setdefault` at load), a target parser and a standalone sender, so no
+user configuration is needed.
+
+- Cron `deliver: hermix` (or `all`, or `origin` for a job without an origin) pushes to every paired
+  phone; a tap opens the app. `deliver: hermix:<session_id>` pushes the same way, and a tap opens
+  that chat. `send_message` accepts the same targets. Valid refs are `home` and
+  `[A-Za-z0-9_.-]{1,200}`; anything else is refused.
+- The banner is a sealed `delivery` event (title "`<bot>` · Scheduled task", subtitle the cron job's
+  name, body the message, 400 characters). The cron wrapper ("Cronjob Response: ...") is parsed off;
+  the job name falls back to the running cron execution. `collapse_id` is per event, so reminders never
+  replace each other. A cron retry keeps its `event_id` (execution id, target, content) and is
+  deduplicated by the relay; a plain `send_message` is always a new event.
+- The send waits for the relay and reports honestly: success only for `accepted` or
+  `deduplicated`. `ignored` (relay too old, deploy it first), `no_devices`, a missing relay URL or keys
+  and a rejected or unreachable relay are errors, so a job never shows delivered when no phone got it.
+  The content is never logged.
+- The agent learns the target without a skill: `pre_llm_call` returns a short note (appended to the user
+  message by Hermes) on the first turn of a phone-facing session and whenever the user message mentions
+  push, notify, remind, alarm (also German). `deliver: origin` from an app chat does not push: Hermes
+  gives local chats no push transport and offers no hook for it.
+- Profiles other than the default read `HERMIX_HOME_CHANNEL` from their own `.env` under
+  `multiplex_profiles: true`; set it to `home` there.
 
 ## Fact checks (hermes-agent v0.21.2 = tag `v2026.9.11`, re-read at v0.21.3)
 
@@ -28,7 +60,7 @@ with `hermes plugins enable hermex-push`, set `HERMEX_PUSH_RELAY_URL`, restart t
    `<plugins>/*/dashboard/manifest.json` without reading `plugin.yaml`, and
    `_mount_plugin_api_routes` mounts the manifest's `api` file at `/api/plugins/<name>/` once
    the plugin is in `plugins.enabled`. All `/api/` routes sit behind the dashboard's auth
-   middleware. So `GET /api/plugins/hermex-push/pairing` works and no QR fallback is needed.
+   middleware. So `GET /api/plugins/hermix-push/pairing` works and no QR fallback is needed.
 3. **Approvals use the observer hooks, not `register_approval_transport`.** Both exist on
    0.21.2, but a registered transport *replaces* every built-in prompt surface once selected
    by `security.approval.transport`, which would take approvals away from the Bot UI that
@@ -62,7 +94,7 @@ keys through the dashboard login.
 `POST {relay_url}/installs/{install_key}/notify`, JSON. Ciphertext only; the relay never sees
 a title or body. See `hermex_push/payload.py` for the authoritative shapes.
 
-Notification (`kind` is `reply`, `approval`, `clarify` or `turn_error`):
+Notification (`kind` is `reply`, `approval`, `clarify`, `turn_error` or `delivery`):
 
 ```json
 {"v": 1, "kind": "reply", "event_id": "<32 hex>", "thread_id": "<32 hex>", "collapse_id": "<32 hex>",
@@ -101,30 +133,30 @@ Other progress is not: the next update replaces it.
 
 ## Pairing
 
-`GET /api/plugins/hermex-push/pairing` (dashboard auth) returns
-`{"relay_url", "install_key", "preview_key", "platform": "hermex", "payload_version": 1,
+`GET /api/plugins/hermix-push/pairing` (dashboard auth) returns
+`{"relay_url", "install_key", "preview_key", "platform": "hermix", "payload_version": 1,
 "plugin_version": "<semver>"}`. `plugin_version` is the plugin code the dashboard process loaded. It
 lags the files on disk (what `hermes plugins list` shows) until that process restarts, so Hermex
 can tell an outdated plugin from one that only needs a restart; plugins older than 0.2.0 omit
 it. `preview_key` is base64 of 32 bytes. Both keys are generated on first use under a file lock at
-`<hermes root>/plugin-data/hermex-push/{install_key,preview_key}` (mode 0600) and never rotated
+`<hermes root>/plugin-data/hermix-push/{install_key,preview_key}` (mode 0600) and never rotated
 behind a paired device. They live outside the plugin's install directory so `hermes plugins
 update`, a forced reinstall or `remove` cannot unpair a phone; keys from the first release's
-location inside the install directory are migrated on first use. The route answers 409 while `HERMEX_PUSH_RELAY_URL` is unset.
+location inside the install directory are migrated on first use. The route answers 409 while `HERMIX_PUSH_RELAY_URL` (or the old `HERMEX_PUSH_RELAY_URL`) is unset.
 
 ## Capabilities
 
-`GET /api/plugins/hermex-push/capabilities` (dashboard auth, plugin 0.5.0 and later) returns
+`GET /api/plugins/hermix-push/capabilities` (dashboard auth, plugin 0.5.0 and later) returns
 `{"plugin_version": "<semver>", "routes": ["GET /capabilities", "GET /pairing", "POST /restart", ...]}`,
 built from the routes this dashboard process mounted (method, then the path below
-`/api/plugins/hermex-push`). Hermex shows a feature that needs a plugin route only where the route
+`/api/plugins/hermix-push`). Hermex shows a feature that needs a plugin route only where the route
 is listed, since a POST can't be probed without running it. The read has no side effects, never
 answers 409 and creates no keys, so a host that uses the plugin without push set up can still
 answer it. A 404 means an older plugin or one the dashboard hasn't loaded since it was installed.
 
 ## Provider quota
 
-`GET /api/plugins/hermex-push/provider-quota?provider=&profile=&refresh=` (dashboard auth, plugin 0.7.0 and later) answers
+`GET /api/plugins/hermix-push/provider-quota?provider=&profile=&refresh=` (dashboard auth, plugin 0.7.0 and later) answers
 one provider's account limits for a Profile in hermes-webui's `/api/provider/quota` envelope, so
 Hermex's Usage screen reads both servers the same way
 ([hermex#1237](https://github.com/uzairansaruzi/hermex/issues/1237)):
@@ -143,7 +175,7 @@ failure. A good answer is cached for 45 s per Profile and provider (64 entries a
 
 ## Restart
 
-`POST /api/plugins/hermex-push/restart` (dashboard auth, plugin 0.4.0 and later) answers
+`POST /api/plugins/hermix-push/restart` (dashboard auth, plugin 0.4.0 and later) answers
 `202 {"ok": true}` and about a second later re-execs the dashboard process it runs in with
 `os.execv(sys.executable, sys.orig_argv)`, so an update Hermex installed is loaded without a trip
 to the host ([hermex#934](https://github.com/uzairansaruzi/hermex/issues/934)). Before the exec it
@@ -166,11 +198,11 @@ the plugin adds them (dashboard auth, plugin 0.6.0 and later;
 [hermex#1236](https://github.com/uzairansaruzi/hermex/issues/1236)). Hermex shows Fetch, Pull and
 New branch on a Hermes chat only while `/capabilities` lists all three.
 
-- `POST /api/plugins/hermex-push/git/fetch {"path", "remote"?}` runs
+- `POST /api/plugins/hermix-push/git/fetch {"path", "remote"?}` runs
   `git fetch --prune --no-recurse-submodules [remote]`.
-- `POST /api/plugins/hermex-push/git/pull {"path", "remote"?}` runs
+- `POST /api/plugins/hermix-push/git/pull {"path", "remote"?}` runs
   `git pull --ff-only --no-recurse-submodules [remote]`: never a merge commit.
-- `POST /api/plugins/hermex-push/git/branch {"path", "name", "start"?}` runs
+- `POST /api/plugins/hermix-push/git/branch {"path", "name", "start"?}` runs
   `git switch -c <name> [start]`, which creates the branch and switches to it, carrying any
   uncommitted changes.
 
@@ -183,21 +215,20 @@ would rewrite, are refused with 400 before git runs.
 
 ## Layout
 
-- `__init__.py` registers the `hermex` platform and the hooks.
+- `__init__.py` registers the `hermix` platform and the hooks (the Python package stays `hermex_push`).
 - `hermex_push/keys.py` key files; `privacy.py` sealing and keyed ids; `payload.py` event shapes;
   `sources.py` coarse source and skip rules; `progress.py` coalescing; `relay.py` background POST;
-  `hooks.py` hook callbacks; `adapter.py` the send-only platform adapter.
+  `hooks.py` hook callbacks; `adapter.py` the platform adapter, target parser and standalone sender.
 - `dashboard/plugin_api.py` the capabilities, pairing, restart, git and provider-quota routes,
   with `hermex_push/quota.py` behind the last; `dashboard/dist/index.js` a no-op the SPA
   requires.
 - `hermex_push_tests/` pytest suite; `fixtures/sealed_preview.json` is a fixed-key vector the
   phone's Notification Service Extension tests can decrypt as well.
 
-`HERMEX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
+`HERMIX_PUSH_RELAY_URL` must be https; plain http is accepted only to loopback (local capture),
 because the install key travels in the URL path. Redirects from the relay are refused.
 
-Cron `deliver: hermex` and the `input`, `delivery` and `system` kinds are V1.1
-([hermex#566](https://github.com/uzairansaruzi/hermex/issues/566)).
+The `input` and `system` kinds are not implemented.
 
 ## Development
 

@@ -1,19 +1,39 @@
-"""The ``hermex`` platform entry. Push is one-way, so the adapter is a stub that reserves the
-platform name, surfaces ``HERMEX_PUSH_RELAY_URL`` in ``hermes config`` and lets the gateway
-report the platform as connected. ``send`` (cron ``deliver: hermex``, send_message) lands in
-V1.1 (hermex#566); until then it fails with a clear message instead of pretending."""
+"""The ``hermix`` platform entry. Hermix is the target of cron ``deliver: hermix`` /
+``hermix:<session>`` and of ``send_message``: ``send`` (live gateway) and ``standalone_send``
+(cron without a gateway) both seal the message and post it to the relay, then report the relay's
+real answer so a job never shows delivered when no phone got it. Nothing arrives from the phone
+through this adapter."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from typing import Any, Dict, Optional
 
-from . import PLATFORM_NAME, RELAY_URL_ENV
-from .hooks import relay_url_from_env
+from . import HOME_CHAT_ID, PLATFORM_NAME, RELAY_URL_ENV
+from .hooks import relay_url_from_env, shared_push
 
 logger = logging.getLogger("hermex_push")
 
-SEND_UNSUPPORTED = "hermex is notification-only in V1; cron and send_message delivery arrive in V1.1 (hermex#566)"
+_SESSION_REF = re.compile(r"[A-Za-z0-9_.-]{1,200}")
+
+
+def parse_target(ref: str) -> Optional[tuple[str, None]]:
+    """``parse_target_ref_fn``: ``hermix`` (the cron home, ``home``) and ``hermix:<session>`` are
+    the only valid targets; anything else is refused instead of guessed."""
+    ref = (ref or "").strip()
+    return (ref, None) if _SESSION_REF.fullmatch(ref) else None
+
+
+async def deliver(chat_id: str, content: str) -> tuple[bool, str]:
+    return await asyncio.to_thread(shared_push().deliver_message, chat_id, content)
+
+
+async def standalone_send(pconfig: Any, chat_id: str, message: str, **_: Any) -> dict:
+    """``standalone_sender_fn``: delivery from a process without the live adapter."""
+    ok, detail = await deliver(chat_id or HOME_CHAT_ID, message)
+    return {"success": True, "message_id": detail} if ok else {"error": detail}
 
 
 def check_requirements() -> bool:
@@ -40,7 +60,7 @@ def make_adapter(config: Any):
     from gateway.config import Platform
     from gateway.platforms.base import BasePlatformAdapter, SendResult
 
-    class HermexAdapter(BasePlatformAdapter):
+    class HermixAdapter(BasePlatformAdapter):
         def __init__(self, cfg: Any) -> None:
             super().__init__(config=cfg, platform=Platform(PLATFORM_NAME))
 
@@ -56,12 +76,13 @@ def make_adapter(config: Any):
 
         async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None,
                        metadata: Optional[Dict[str, Any]] = None) -> SendResult:
-            return SendResult(success=False, error=SEND_UNSUPPORTED)
+            ok, detail = await deliver(chat_id or HOME_CHAT_ID, content)
+            return SendResult(success=True, message_id=detail) if ok else SendResult(success=False, error=detail)
 
         async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
-            return {"name": "Hermex", "type": "dm"}
+            return {"name": "Hermix", "type": "dm"}
 
-    return HermexAdapter(config)
+    return HermixAdapter(config)
 
 
 PLATFORM_HINT = (

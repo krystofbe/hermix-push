@@ -265,20 +265,30 @@ def test_nothing_is_sent_without_a_relay_url_or_keys(keys, sender):
 
 def test_profile_without_its_own_relay_url_inherits_the_root_dotenv(hermes_home, monkeypatch):
     from hermex_push.hooks import relay_url_from_env
-    (hermes_home / ".env").write_text("OTHER=1\nHERMEX_PUSH_RELAY_URL=https://root.test/\n")
+    (hermes_home / ".env").write_text("OTHER=1\nHERMIX_PUSH_RELAY_URL=https://root.test/\n")
     profile = hermes_home / "profiles" / "dev"
     profile.mkdir(parents=True)
     monkeypatch.setenv("HERMES_HOME", str(profile))
     assert relay_url_from_env() == "https://root.test/"
-    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://env.test")
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://env.test")
     assert relay_url_from_env() == "https://env.test"
+
+
+def test_the_pre_fork_relay_url_variable_is_still_read_but_the_new_one_wins(hermes_home, monkeypatch):
+    from hermex_push.hooks import relay_url_from_env
+    (hermes_home / ".env").write_text("HERMEX_PUSH_RELAY_URL=https://old-dotenv.test\n")
+    assert relay_url_from_env() == "https://old-dotenv.test"
+    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://old-env.test")
+    assert relay_url_from_env() == "https://old-env.test"
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://new.test")
+    assert relay_url_from_env() == "https://new.test"
 
 
 def test_relay_url_from_env_refuses_cleartext_to_remote_hosts(monkeypatch):
     from hermex_push.hooks import relay_url_from_env
-    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "http://relay.example")
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "http://relay.example")
     assert relay_url_from_env() == ""
-    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://relay.example")
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.example")
     assert relay_url_from_env() == "https://relay.example"
 
 

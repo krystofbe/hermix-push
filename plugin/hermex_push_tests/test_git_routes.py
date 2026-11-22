@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
-PREFIX = "/api/plugins/hermex-push"
+PREFIX = "/api/plugins/hermix-push"
 
 
 @pytest.fixture

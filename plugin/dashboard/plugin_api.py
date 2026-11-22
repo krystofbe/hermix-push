@@ -1,11 +1,11 @@
-"""Capabilities, pairing, restart, git and provider-quota routes, mounted by the dashboard at ``/api/plugins/hermex-push/`` behind
+"""Capabilities, pairing, restart, git and provider-quota routes, mounted by the dashboard at ``/api/plugins/hermix-push/`` behind
 dashboard auth. Hermex calls ``GET /pairing`` once with the user's dashboard login and stores the
 result in the Keychain; no key is ever typed.
 
 Response: ``{"relay_url": str, "install_key": <64 hex>, "preview_key": <base64 of 32 bytes>,
-"platform": "hermex", "payload_version": 1, "plugin_version": "<semver>"}``. ``plugin_version``
+"platform": "hermix", "payload_version": 1, "plugin_version": "<semver>"}``. ``plugin_version``
 is the code this process loaded, which lags the files on disk until the dashboard restarts; a
-response without it comes from a plugin older than 0.2.0. 409 when ``HERMEX_PUSH_RELAY_URL`` is
+response without it comes from a plugin older than 0.2.0. 409 when ``HERMIX_PUSH_RELAY_URL`` is
 unset, because a pairing without a relay could never deliver.
 
 ``GET /capabilities`` (hermex#1235) lists the routes this process mounted, so Hermex shows a
@@ -146,7 +146,7 @@ def _reexec() -> None:
     try:
         os.execv(sys.executable, sys.orig_argv)
     except Exception:
-        _log.exception("hermex-push: could not restart the dashboard")
+        _log.exception("hermix-push: could not restart the dashboard")
         with contextlib.suppress(Exception):
             sys.modules["tools.environments.base"]._exit_fenced = False
         with _restart_lock:

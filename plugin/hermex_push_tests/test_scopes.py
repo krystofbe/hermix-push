@@ -112,3 +112,9 @@ def test_a_failing_push_never_breaks_the_hosts_hooks(served):
     served["undo"]()
     served["undo"] = serve_every_profile(served["class"], lambda: "code-man", broken)
     assert manager.invoke_hook("pre_llm_call", session_id="s", platform="tui") == ["host result"]
+
+
+def test_the_delivery_note_for_a_profile_without_its_own_copy_reaches_the_host(served):
+    manager = served["class"]()
+    results = manager.invoke_hook("pre_llm_call", session_id="s9", platform="tui", user_message="x", is_first_turn=True)
+    assert len(results) == 1 and "deliver='hermix:s9'" in results[0]["context"]

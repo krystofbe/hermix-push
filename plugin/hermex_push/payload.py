@@ -2,10 +2,13 @@
 
 Notification event (``POST /installs/{install_key}/notify``)::
 
-    {"v": 1, "kind": "reply" | "approval" | "clarify" | "turn_error",
+    {"v": 1, "kind": "reply" | "approval" | "clarify" | "turn_error" | "delivery",
      "event_id": <32 hex>, "thread_id": <32 hex>, "collapse_id": <32 hex>,
      "session_id": str, "source": "bot" | "webui" | "other", "is_subagent": bool,
      "sent_at": <unix seconds>, "sealed": <base64> | null}
+
+``delivery`` is a message the user asked to be pushed (cron ``deliver: hermix``, send_message);
+its ``collapse_id`` is per event, so two reminders never replace each other.
 
 ``sealed`` decrypts to ``{"title", "subtitle", "body", "profile", "request_id", "bot_name"}``.
 ``bot_name`` is the name the Hermex roster shows for the bot, omitted when unknown; the phone
@@ -33,7 +36,7 @@ from .keys import Keys
 from .privacy import keyed_id, seal
 
 PAYLOAD_VERSION = 1
-NOTIFY_KINDS = frozenset({"reply", "approval", "clarify", "turn_error"})
+NOTIFY_KINDS = frozenset({"reply", "approval", "clarify", "turn_error", "delivery"})
 PROGRESS_STATUSES = frozenset({"running", "waiting", "done", "failed"})
 
 TITLE_CHARS = 80
@@ -134,10 +137,13 @@ def preview(*, title: Any, body: Any, profile: str, subtitle: Any = "", request_
 
 
 def _identity(keys: Keys, kind: str, session_id: str, event_ref: str) -> dict[str, str]:
+    event_id = keyed_id("event", f"{kind}:{session_id}:{event_ref}", install_key=keys.install_key)
     return {
-        "event_id": keyed_id("event", f"{kind}:{session_id}:{event_ref}", install_key=keys.install_key),
+        "event_id": event_id,
         "thread_id": keyed_id("thread", session_id, install_key=keys.install_key),
-        "collapse_id": keyed_id("collapse", session_id, install_key=keys.install_key),
+        # A delivery is its own banner; everything else replaces its session's previous one.
+        "collapse_id": event_id if kind == "delivery"
+        else keyed_id("collapse", session_id, install_key=keys.install_key),
     }
 
 

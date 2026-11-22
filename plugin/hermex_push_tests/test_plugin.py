@@ -46,7 +46,7 @@ class FakeCtx:
 
 def test_install_identifier_and_manifest_names_agree():
     git_url, _, subdir = INSTALL_IDENTIFIER.partition(".git/")
-    assert git_url + ".git" == "https://github.com/uzairansaruzi/hermex-push.git" and subdir == "plugin"
+    assert git_url + ".git" == "https://github.com/krystofbe/hermix-push.git" and subdir == "plugin"
     manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text())
     assert manifest["name"] == PLUGIN_NAME and manifest["kind"] == "platform"
     import json
@@ -63,12 +63,16 @@ def test_declared_versions_match_the_loaded_version():
     } == dict.fromkeys(["plugin.yaml", "pyproject.toml", "dashboard/manifest.json"], PLUGIN_VERSION)
 
 
-def test_register_declares_platform_and_every_manifest_hook():
+def test_register_declares_platform_and_every_manifest_hook(monkeypatch):
+    monkeypatch.delenv("HERMIX_HOME_CHANNEL", raising=False)
     plugin = _load(ROOT / "__init__.py", "hermex_push_plugin_under_test")
     ctx = FakeCtx()
     plugin.register(ctx)
-    assert ctx.platform["name"] == "hermex" and ctx.platform["required_env"] == ["HERMEX_PUSH_RELAY_URL"]
+    assert ctx.platform["name"] == "hermix" and ctx.platform["required_env"] == ["HERMIX_PUSH_RELAY_URL"]
     assert ctx.platform["pii_safe"] is True
+    # Cron ``deliver: hermix`` needs the home env var (defaulted to "home"), a target parser and a sender.
+    assert ctx.platform["cron_deliver_env_var"] == "HERMIX_HOME_CHANNEL" and os.environ["HERMIX_HOME_CHANNEL"] == "home"
+    assert callable(ctx.platform["parse_target_ref_fn"]) and callable(ctx.platform["standalone_sender_fn"])
     declared = set(yaml.safe_load((ROOT / "plugin.yaml").read_text())["provides_hooks"])
     assert set(ctx.hooks) == declared
     ctx.unload()  # registered and callable
@@ -77,29 +81,29 @@ def test_register_declares_platform_and_every_manifest_hook():
 def test_pairing_route_returns_keys_only_with_a_relay_url(hermes_home, monkeypatch):
     api = _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_pairing_under_test")
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
     client = TestClient(app)
 
-    assert client.get("/api/plugins/hermex-push/pairing").status_code == 409
+    assert client.get("/api/plugins/hermix-push/pairing").status_code == 409
 
-    monkeypatch.setenv("HERMEX_PUSH_RELAY_URL", "https://relay.test")
-    response = client.get("/api/plugins/hermex-push/pairing")
+    monkeypatch.setenv("HERMIX_PUSH_RELAY_URL", "https://relay.test")
+    response = client.get("/api/plugins/hermix-push/pairing")
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
     body = response.json()
-    assert body["relay_url"] == "https://relay.test" and body["platform"] == "hermex" and body["payload_version"] == 1
+    assert body["relay_url"] == "https://relay.test" and body["platform"] == "hermix" and body["payload_version"] == 1
     assert body["plugin_version"] == PLUGIN_VERSION
     assert len(body["install_key"]) == 64
     import base64
     assert len(base64.b64decode(body["preview_key"])) == 32
-    assert client.get("/api/plugins/hermex-push/pairing").json() == body
+    assert client.get("/api/plugins/hermix-push/pairing").json() == body
 
 
 def test_capabilities_lists_the_mounted_routes_without_touching_the_keys(hermes_home):
     api = _load(ROOT / "dashboard" / "plugin_api.py", "hermex_push_capabilities_under_test")
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
 
-    response = TestClient(app).get("/api/plugins/hermex-push/capabilities")
+    response = TestClient(app).get("/api/plugins/hermix-push/capabilities")
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
     body = response.json()
     assert body["plugin_version"] == PLUGIN_VERSION
@@ -143,17 +147,17 @@ def test_restart_answers_202_then_reexecs_the_dashboard_with_its_own_command_lin
     monkeypatch.setattr(sys, "executable", str(python))
     monkeypatch.setattr(sys, "orig_argv", argv)
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
     client = TestClient(app)
 
-    response = client.post("/api/plugins/hermex-push/restart")
+    response = client.post("/api/plugins/hermix-push/restart")
 
     assert response.status_code == 202 and response.json() == {"ok": True}
     assert calls == [], "Nothing stops before the answer is on its way"
     assert [(t.interval, t.daemon, t.started) for t in timers] == [(1.0, True, True)]
-    assert client.post("/api/plugins/hermex-push/restart").status_code == 202
+    assert client.post("/api/plugins/hermix-push/restart").status_code == 202
     assert len(timers) == 1, "A second tap joins the pending restart"
-    assert client.get("/api/plugins/hermex-push/restart").status_code == 405, "Never a GET a link could trigger"
+    assert client.get("/api/plugins/hermix-push/restart").status_code == 405, "Never a GET a link could trigger"
 
     timers[0].function()
 
@@ -172,14 +176,14 @@ def test_a_failed_exec_keeps_the_dashboard_running_commands_and_can_be_tried_aga
 
     monkeypatch.setattr(os, "execv", refuse)
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
     client = TestClient(app)
 
-    assert client.post("/api/plugins/hermex-push/restart").status_code == 202
+    assert client.post("/api/plugins/hermix-push/restart").status_code == 202
     timers[0].function()
 
     assert base._exit_fenced is False, "The teardown's exit fence would refuse every later command"
-    assert client.post("/api/plugins/hermex-push/restart").status_code == 202
+    assert client.post("/api/plugins/hermix-push/restart").status_code == 202
     assert len(timers) == 2, "The next request schedules a new restart"
 
 
@@ -188,9 +192,9 @@ def test_a_dashboard_whose_python_is_gone_is_refused_before_anything_stops(monke
     api, timers = _restart_api(monkeypatch, calls)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "rebuilt-venv" / "python3"))
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
 
-    response = TestClient(app).post("/api/plugins/hermex-push/restart")
+    response = TestClient(app).post("/api/plugins/hermix-push/restart")
 
     assert response.status_code == 409
     assert timers == [] and calls == []
@@ -202,11 +206,11 @@ def test_restart_needs_the_dashboard_sign_in(monkeypatch):
     web_server = pytest.importorskip("hermes_cli.web_server")
     calls = []
     api, timers = _restart_api(monkeypatch, calls)
-    web_server.app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    web_server.app.include_router(api.router, prefix="/api/plugins/hermix-push")
     client = TestClient(web_server.app, base_url="http://127.0.0.1")
 
     for gated in (False, True):
         monkeypatch.setattr(web_server.app.state, "auth_required", gated, raising=False)
-        assert client.post("/api/plugins/hermex-push/restart").status_code == 401, f"gated={gated}"
+        assert client.post("/api/plugins/hermix-push/restart").status_code == 401, f"gated={gated}"
 
     assert timers == [] and calls == []

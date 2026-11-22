@@ -1,6 +1,6 @@
 """Provider account limits for Hermex's Usage screen (hermex#1237).
 
-``GET /api/plugins/hermex-push/provider-quota`` answers in hermes-webui's ``/api/provider/quota``
+``GET /api/plugins/hermix-push/provider-quota`` answers in hermes-webui's ``/api/provider/quota``
 envelope, so the app decodes one shape from either server. The limits come from hermes-agent's
 ``agent.account_usage.fetch_account_usage``, the source of the CLI's and gateway's ``/usage``
 account lines, run inside the requested Profile's config and secret scope so its credentials are

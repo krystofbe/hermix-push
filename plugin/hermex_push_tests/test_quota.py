@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from hermex_push import quota
 
 ROOT = Path(__file__).resolve().parents[1]
-URL = "/api/plugins/hermex-push/provider-quota"
+URL = "/api/plugins/hermix-push/provider-quota"
 
 
 def _window(label, used, reset_at=None, detail=None):
@@ -64,7 +64,7 @@ def route(monkeypatch):
     sys.modules[spec.name] = api
     spec.loader.exec_module(api)
     app = FastAPI()
-    app.include_router(api.router, prefix="/api/plugins/hermex-push")
+    app.include_router(api.router, prefix="/api/plugins/hermix-push")
     return SimpleNamespace(client=TestClient(app), host=host, scopes=scopes)
 
 
@@ -167,7 +167,7 @@ def test_the_cache_expires_and_keeps_at_most_64_entries():
 
 
 def test_capabilities_lists_the_route(route):
-    routes = route.client.get("/api/plugins/hermex-push/capabilities").json()["routes"]
+    routes = route.client.get("/api/plugins/hermix-push/capabilities").json()["routes"]
     assert "GET /provider-quota" in routes
 
 

@@ -1,6 +1,6 @@
-"""hermex-push: hermes-agent platform plugin entry point.
+"""hermix-push: hermes-agent platform plugin entry point.
 
-Registers the ``hermex`` platform and the lifecycle hooks that turn turn boundaries, approvals
+Registers the ``hermix`` platform and the lifecycle hooks that turn turn boundaries, approvals
 and questions into sealed relay events. The dashboard pairing route lives in
 ``dashboard/plugin_api.py`` and is mounted by the web server, not here.
 """
@@ -18,9 +18,11 @@ _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 
-from hermex_push import PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
+import os  # noqa: E402
+
+from hermex_push import HOME_CHANNEL_ENV, HOME_CHAT_ID, PLATFORM_NAME, RELAY_URL_ENV  # noqa: E402
 from hermex_push.adapter import (  # noqa: E402
-    PLATFORM_HINT, check_requirements, env_enablement, is_connected, make_adapter,
+    PLATFORM_HINT, check_requirements, env_enablement, is_connected, make_adapter, parse_target, standalone_send,
 )
 from hermex_push.hooks import HermexPush  # noqa: E402
 from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
@@ -28,11 +30,15 @@ from hermex_push.scopes import serve_every_profile_in_host  # noqa: E402
 
 def register(ctx) -> None:
     """Plugin entry point called by the Hermes plugin system, once per profile scope."""
+    # Bare ``deliver: hermix`` needs a home chat id from this env var; "home" reaches every phone.
+    os.environ.setdefault(HOME_CHANNEL_ENV, HOME_CHAT_ID)
     ctx.register_platform(
-        name=PLATFORM_NAME, label="Hermex", adapter_factory=make_adapter, check_fn=check_requirements,
+        name=PLATFORM_NAME, label="Hermix", adapter_factory=make_adapter, check_fn=check_requirements,
         is_connected=is_connected, required_env=[RELAY_URL_ENV],
         install_hint="pip install cryptography   # already a Hermes dependency",
         env_enablement_fn=env_enablement, emoji="📱", pii_safe=True, platform_hint=PLATFORM_HINT,
+        cron_deliver_env_var=HOME_CHANNEL_ENV, parse_target_ref_fn=parse_target,
+        standalone_sender_fn=standalone_send,
     )
     profile = ""
     try:

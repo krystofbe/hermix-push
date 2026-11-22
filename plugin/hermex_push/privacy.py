@@ -40,7 +40,7 @@ def seal(preview: dict[str, Any], *, preview_key: bytes, install_key: str) -> Op
         return base64.b64encode(nonce + ciphertext).decode("ascii")
     except Exception:
         # Deliberately no preview content in the log line.
-        logger.warning("hermex-push: sealing a preview failed; sending a content-free notification", exc_info=True)
+        logger.warning("hermix-push: sealing a preview failed; sending a content-free notification", exc_info=True)
         return None
 
 

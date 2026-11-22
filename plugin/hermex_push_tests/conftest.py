@@ -16,7 +16,8 @@ def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / ".hermes"
     home.mkdir()
     monkeypatch.setenv("HERMES_HOME", str(home))
-    monkeypatch.delenv("HERMEX_PUSH_RELAY_URL", raising=False)
+    for name in ("HERMIX_PUSH_RELAY_URL", "HERMEX_PUSH_RELAY_URL", "HERMIX_HOME_CHANNEL"):
+        monkeypatch.delenv(name, raising=False)
     return home
 
 

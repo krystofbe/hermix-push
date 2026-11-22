@@ -1,6 +1,6 @@
 """Install and preview keys, created once and never rotated behind a paired device.
 
-Both live in ``<hermes root>/plugin-data/hermex-push/`` (hermes-agent's per-plugin state
+Both live in ``<hermes root>/plugin-data/hermix-push/`` (hermes-agent's per-plugin state
 convention), mode 0600, created under a file lock so two gateway processes starting together
 agree on one key. hermex#490 first pinned them inside the plugin's install directory, but
 ``hermes plugins install --force`` swaps that directory and ``remove`` deletes it, which would
@@ -20,7 +20,7 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import PLUGIN_NAME
+from . import LEGACY_PLUGIN_NAME, PLUGIN_NAME
 
 PREVIEW_KEY_BYTES = 32
 INSTALL_KEY_HEX_CHARS = 64
@@ -56,6 +56,17 @@ def _migrate_legacy_keys(directory: Path, legacy: Path) -> None:
     for name in names:
         os.replace(legacy / name, directory / name)
         os.chmod(directory / name, 0o600)
+
+
+def _copy_pre_fork_keys(directory: Path, home: Path | None) -> None:
+    """Pairings made under the old plugin name (``plugin-data/hermex-push``) carry over: a
+    complete pair is copied, never over keys that exist and never deleted from the old place."""
+    old = (home or hermes_root()) / "plugin-data" / LEGACY_PLUGIN_NAME
+    names = ("install_key", "preview_key")
+    if any((directory / n).exists() for n in names) or not all((old / n).is_file() for n in names):
+        return
+    for name in names:
+        _write_private(directory / name, (old / name).read_bytes())
 
 
 @dataclass(frozen=True)
@@ -98,6 +109,7 @@ def load_or_create_keys(home: Path | None = None) -> Keys:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             _migrate_legacy_keys(directory, legacy_key_dir(home))
+            _copy_pre_fork_keys(directory, home)
             install = _read_or_create(
                 directory / "install_key", lambda: secrets.token_hex(INSTALL_KEY_HEX_CHARS // 2).encode("ascii")
             ).decode("ascii").strip()
@@ -105,5 +117,5 @@ def load_or_create_keys(home: Path | None = None) -> Keys:
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
     if len(install) != INSTALL_KEY_HEX_CHARS or len(preview) != PREVIEW_KEY_BYTES:
-        raise ValueError("hermex-push key files are malformed; remove them to regenerate (this unpairs every device)")
+        raise ValueError("hermix-push key files are malformed; remove them to regenerate (this unpairs every device)")
     return Keys(install_key=install, preview_key=preview)
