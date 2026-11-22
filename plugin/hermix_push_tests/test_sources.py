@@ -18,3 +18,9 @@ def test_native_notifying_platforms_and_automation_sessions_are_skipped():
     assert not should_notify("cron_job_1", "desktop")
     assert not should_notify("kanban_task", "desktop")
     assert not should_notify("", "desktop")
+
+
+def test_cron_runs_named_like_chats_are_skipped_by_their_platform():
+    # Newer hosts name a cron run `local-<sha>`; only the agent platform marks it.
+    assert not should_notify("local-c24dbee0146d", "cron")
+    assert should_notify("local-c24dbee0146d", "desktop")

@@ -23,6 +23,8 @@ NATIVE_NOTIFY_PLATFORMS = frozenset({
 })
 
 SKIPPED_SESSION_PREFIXES = ("cron_", "kanban_")
+# Newer hosts name cron runs `local-<sha>` and mark them only by the agent platform.
+SKIPPED_PLATFORMS = frozenset({"cron", "kanban"})
 
 
 def coarse_source(platform: str | None) -> str:
@@ -41,4 +43,4 @@ def should_notify(session_id: str | None, platform: str | None) -> bool:
     if not session_id or session_id.startswith(SKIPPED_SESSION_PREFIXES):
         return False
     name = (platform or "").strip().lower()
-    return bool(name) and name not in NATIVE_NOTIFY_PLATFORMS
+    return bool(name) and name not in NATIVE_NOTIFY_PLATFORMS and name not in SKIPPED_PLATFORMS
