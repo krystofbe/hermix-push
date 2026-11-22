@@ -13,7 +13,7 @@ export const prefsSchema = z.object({
 }).strict();
 export const deviceSchema = z.object({
   device_token: tokenSchema,
-  bundle_id: z.enum(['com.uzairansar.hermesmobile', 'com.uzairansar.hermesmobile.branch']),
+  bundle_id: z.enum(['ms.blackbox.hermix']),
   environment: z.enum(['sandbox', 'production']),
   prefs: prefsSchema.prefault({}),
 }).strict();

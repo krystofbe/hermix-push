@@ -78,7 +78,7 @@ export function senderFor(secrets: ApnsSecrets): ApnsSender {
 export function bannerPush(event: NotificationEvent, device: Device, installHash: string, policy: Extract<Delivery, { type: 'banner' }>, now: number): Push {
   const payload = {
     aps: {
-      alert: { title: 'Hermex', body: 'New activity' }, sound: 'default',
+      alert: { title: 'Hermix', body: 'New activity' }, sound: 'default',
       'mutable-content': 1, 'thread-id': policy.threadId, 'interruption-level': policy.interruption,
     },
     v: 1, kind: event.kind, event_id: event.event_id, install_hash: installHash,
@@ -121,6 +121,6 @@ export function activityPush(event: ProgressEvent, device: Device, token: string
 export function endAlertPush(event: ProgressEvent, device: Device, token: string, alert: EndAlert, now: number): Push {
   return liveActivityPush(event, device, token, '10', now, {
     event: 'update',
-    alert: { title: 'Hermex', body: { 'loc-key': alert === 'complete' ? 'Response complete' : 'Response failed' }, sound: 'default' },
+    alert: { title: 'Hermix', body: { 'loc-key': alert === 'complete' ? 'Response complete' : 'Response failed' }, sound: 'default' },
   });
 }
